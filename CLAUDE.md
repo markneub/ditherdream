@@ -63,6 +63,9 @@ exact block of screen pixels.
 pixels per scene pixel on a phone, outlines on, pure black and white. `S.mode = 1` (screen-space
 Bayer), `S.raw`, `S.edges` and `S.spin` remain as dev switches via `window.__dbg.S`.
 
+**`?dither=atkinson`** (`S.mode = 2`) is an alternative look the user asked to try, reached only by that URL parameter so
+it can be compared on a phone; `DITHER=atkinson npm run shots` renders with it. See "The Atkinson-like look" below.
+
 ## Scenes
 
 The "Scenes" button (top left) lists them; `?scene=<name>` starts in one. Scenes with an `orbit` view open
@@ -126,6 +129,20 @@ After Rune Skovbo Johansen's "surface-stable fractal dithering", done procedural
   density stays constant and nothing pops at level changes. Dots scale in by rank (`w`).
 - Tone sets dot radius. Above 50% luminance: dark dots on light; below: light dots on dark.
   Coverage under 3% is clipped to solid, and tiny dots are clamped to a minimum size.
+
+## The Atkinson-like look (`uFM` in `surf()`)
+
+Real Atkinson is error diffusion: screen-space and sequential, so it crawls under any motion and cannot run in a fragment
+shader. This imitates what makes it look the way it does, on the same surface-stuck lattice and at the same cost:
+
+- **Tone sets how many dots are on, not their size** (error diffusion is frequency-modulated). Dots are squares of fixed
+  size (about 1.7 scene pixels) on a lattice `ATK_SPACING` (2.4 px) apart; the whole lattice is on at 50%.
+- **Which dots are on** is the Bayer order plus a random number per lattice point (`0.7*(h-0.5)`), which breaks the ordered
+  pattern into an irregular one. The number belongs to the point at every fractal level (coordinates with their common
+  factors of two stripped, plus the level), so nothing reshuffles as the level changes.
+- **Contrast:** `(lum-0.5)*1.3+0.5`, standing in for the quarter of the error Atkinson throws away.
+- Not there: the edge sharpening real error diffusion gives. Small square dots shimmer more than the round ones as they
+  cross the pixel grid; judged only in stills so far.
 
 ## Knobs worth trying
 

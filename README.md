@@ -9,4 +9,6 @@ Live at https://markneub.github.io/ditherdream/ or open `index.html` in any WebG
 
 `npm install && npm run shots` renders reference screenshots into `shots/`.
 
+Add `?dither=atkinson` to the address for an alternative, Atkinson-like look (small square dots whose number, not size, follows the tone).
+
 See [CLAUDE.md](CLAUDE.md) for how it works and what to try next.

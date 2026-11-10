@@ -16,7 +16,7 @@ const server = createServer((q, res) => {
   catch { res.writeHead(404); res.end(); }
 });
 await new Promise(ok => server.listen(0, '127.0.0.1', ok));
-const page = `http://127.0.0.1:${server.address().port}/index.html`;
+const page = `http://127.0.0.1:${server.address().port}/index.html` + (process.env.DITHER ? `?dither=${process.env.DITHER}` : ''); // DITHER=atkinson npm run shots
 const out = fileURLToPath(new URL('../shots/', import.meta.url));
 mkdirSync(out, { recursive: true });
 
