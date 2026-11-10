@@ -1,5 +1,5 @@
 // ---------- scenes ----------
-const SCENES = [DECK, ANCHOR, HOLD, LIGHTHOUSE, FOREST, CATHEDRAL, TRAIN, RUINS];
+const SCENES = [DECK, ANCHOR, OFFICE, HOLD, LIGHTHOUSE, FOREST, CATHEDRAL, TRAIN, RUINS];
 const hint=document.getElementById('hint'), modeBtn=document.getElementById('mode'), fade=document.getElementById('fade');
 const scenesBtn=document.getElementById('scenes'), sceneList=document.getElementById('scene-list');
 const coarse=matchMedia('(pointer: coarse)').matches;
@@ -23,7 +23,7 @@ function showHint(){
   hint.firstElementChild.innerHTML = view==='orbit' ? 'drag to orbit · pinch / scroll to zoom'
     : (coarse ? 'slide up to walk · sideways to turn<br>hold still to look around' : 'click, then WASD to walk · Shift to run')
       + (scene.tip ? '<br>'+scene.tip : '');
-  if(scene.load&&!scene.ready) hint.firstElementChild.innerHTML = scene.failed ? 'could not load the model'+(location.protocol==='file:'?'<br>(it needs a web server, not file://)':'') : 'loading the ship\u2026';
+  if(scene.load&&!scene.ready) hint.firstElementChild.innerHTML = scene.failed ? 'could not load the model'+(location.protocol==='file:'?'<br>(it needs a web server, not file://)':'') : (scene.loadingText||'loading\u2026');
   hint.style.display='';
 }
 /** Put the player somewhere in a scene (its spawn by default), with a short fade. Scenes without an orbit view are walked. */
@@ -82,23 +82,26 @@ function frame(now){
   const V=M4.lookAt(eye,look,[0,1,0]);
   const VP=M4.mul(M4.persp(FOV,W/H,walking?0.06:0.2,600),V);
 
-  const drawScene=(uM,shadows)=>{
+  const drawScene=(uM,shadows,lamp)=>{
     gl.uniformMatrix4fv(uM,false,IDENT); gl.bindVertexArray(sc.statics.a); gl.drawArrays(gl.TRIANGLES,0,sc.statics.n);
     for(const o of sc.dyn){ if(shadows&&(o.noShadow||(shadows===2&&o.noLampShadow))) continue; gl.uniformMatrix4fv(uM,false,M4.trs(o.pos,o.rot));
-      if(!shadows&&o.tex){ gl.bindTexture(gl.TEXTURE_2D,o.tex.t); gl.uniform2f(sceneProg.u.uTone,1/o.tex.mean,o.contrast); } gl.bindVertexArray(o.g.a); gl.drawArrays(gl.TRIANGLES,0,o.g.n); } };
+      if(!shadows&&o.tex){ gl.bindTexture(gl.TEXTURE_2D,o.tex.t); gl.uniform2f(sceneProg.u.uTone,1/o.tex.mean,o.contrast); }
+      if(lamp&&o.parts){ gl.bindVertexArray(o.g.a); const q=lamp.pos;   // a batch of model copies: only the ones this lamp can reach
+        for(const p of o.parts) if(Math.hypot(p.c[0]-q[0],p.c[1]-q[1],p.c[2]-q[2])<lamp.range+p.r) gl.drawArrays(gl.TRIANGLES,p.first,p.count);
+        continue; } gl.bindVertexArray(o.g.a); gl.drawArrays(gl.TRIANGLES,0,o.g.n); } };
 
   // shadow passes: the sun or moon, then six cube faces per lamp
   gl.enable(gl.DEPTH_TEST);
   gl.useProgram(shadowProg.p);
   gl.bindFramebuffer(gl.FRAMEBUFFER,shadowFB); gl.viewport(0,0,SM,SM); gl.clear(gl.DEPTH_BUFFER_BIT);
-  gl.uniformMatrix4fv(shadowProg.u.uSunVP,false,sc.sunVP); drawScene(shadowProg.u.uM,true);
+  gl.uniformMatrix4fv(shadowProg.u.uSunVP,false,sc.sunVP); if(!sc.noSun) drawScene(shadowProg.u.uM,true);
   gl.bindFramebuffer(gl.FRAMEBUFFER,cubeFB); gl.viewport(0,0,CUBE,CUBE);
   const cubeProj=M4.persp(Math.PI/2,1,CUBE_NEAR,sc.cubeFar);
-  sc.lamps.forEach((l,i)=>{ for(let f=0;f<6;f++){
+  sc.lamps.forEach((l,i)=>{ if(!(l.now>0.01)) return; for(let f=0;f<6;f++){   // a lamp that is off casts nothing
     gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.DEPTH_ATTACHMENT,gl.TEXTURE_CUBE_MAP_POSITIVE_X+f,cubeTex[i],0); gl.clear(gl.DEPTH_BUFFER_BIT);
     const d=CUBE_FACES[f][0], p=l.pos;
     gl.uniformMatrix4fv(shadowProg.u.uSunVP,false,M4.mul(cubeProj,M4.lookAt(p,[p[0]+d[0],p[1]+d[1],p[2]+d[2]],CUBE_FACES[f][1])));
-    drawScene(shadowProg.u.uM,2); } });
+    drawScene(shadowProg.u.uM,2,l); } });
 
   gl.bindFramebuffer(gl.FRAMEBUFFER,sceneFB); gl.viewport(0,0,W,H);
   gl.clearBufferfv(gl.COLOR,0,[0,0,1,1]); gl.clearBufferfv(gl.COLOR,1,[0,0,0,0]); gl.clearBufferfi(gl.DEPTH_STENCIL,0,1,0);
@@ -107,7 +110,7 @@ function frame(now){
   gl.uniform3fv(u.uSunDir,sc.sunDir); gl.uniform3fv(u.uEye,eye);
   const lp=new Float32Array(9), lq=new Float32Array(6), ld=new Float32Array(12);
   for(let i=0;i<MAX_LAMPS;i++){ const l=sc.lamps[i]; ld[i*4+3]=-2; if(!l) continue;
-    lp.set(l.pos,i*3); lq[i*2]=l.now; lq[i*2+1]=l.range; if(l.dir){ ld.set(l.dir,i*4); ld[i*4+3]=l.cone; } }
+    lp.set(l.pos,i*3); lq[i*2]=l.now>0.01?l.now:0; lq[i*2+1]=l.range; if(l.dir){ ld.set(l.dir,i*4); ld[i*4+3]=l.cone; } }
   gl.uniform3fv(u['uLamp[0]'],lp); gl.uniform2fv(u['uLampP[0]'],lq); gl.uniform4fv(u['uLampD[0]'],ld);
   gl.uniform2f(u.uCubeNF,CUBE_NEAR,sc.cubeFar);
   gl.uniform1f(u.uSky,sc.sky); gl.uniform1f(u.uFill,sc.fill); gl.uniform1f(u.uSunI,sc.sunI); gl.uniform1f(u.uT,T);

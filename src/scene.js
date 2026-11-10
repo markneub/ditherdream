@@ -29,17 +29,33 @@ function endScene(props){
 // Turns one glTF mesh into a drawable for sc.dyn (kind 2: lattice from position, tone from its texture). Every
 // connected piece of the mesh (a rope, a block, a plank) gets its own id from idBase, so outlines separate the parts
 // of a "joined" model the way they separate add() calls. Ids from 32768 mark model pixels for the post pass.
-function modelObject(mesh,idBase,shade){
-  const {pos,nrm,uv,idx}=mesh, nv=pos.length/3, weld=new Map(), par=new Int32Array(nv), w=new Int32Array(nv);
+function meshPieces(mesh){
+  const {pos,idx}=mesh, nv=pos.length/3, weld=new Map(), par=new Int32Array(nv), w=new Int32Array(nv);
   for(let i=0;i<nv;i++){ par[i]=i;                                                    // weld vertices split by UV seams
     const k=Math.round(pos[i*3]*2e3)+','+Math.round(pos[i*3+1]*2e3)+','+Math.round(pos[i*3+2]*2e3); let j=weld.get(k); if(j===undefined) weld.set(k,j=i); w[i]=j; }
   const find=x=>{ while(par[x]!==x){ par[x]=par[par[x]]; x=par[x]; } return x; };
   for(let t=0;t<idx.length;t+=3){ const a=find(w[idx[t]]); par[find(w[idx[t+1]])]=a; par[find(w[idx[t+2]])]=a; }
-  const ids=new Map(), d=new Float32Array(idx.length*12);
-  for(let t=0;t<idx.length;t++){ const i=idx[t], r=find(w[i]); let id=ids.get(r); if(id===undefined) ids.set(r,id=idBase+ids.size);
-    d.set([pos[i*3],pos[i*3+1],pos[i*3+2],nrm[i*3],nrm[i*3+1],nrm[i*3+2],uv[i*2],uv[i*2+1],id,shade,0,2],t*12); }
-  if(idBase+ids.size>65535) fail('Too many pieces in one model');
-  return {g:vao(d),pos:[0,0,0],rot:[0,0,0],count:ids.size}; }
+  const ids=new Map(), piece=new Int32Array(nv);
+  for(let i=0;i<nv;i++){ const r=find(w[i]); let id=ids.get(r); if(id===undefined) ids.set(r,id=ids.size); piece[i]=id; }
+  return {piece,n:ids.size}; }
+// meshes: glTF meshes sharing one texture; mats: one 4x4 per copy (rotation, uniform scale, translation). All copies are
+// baked into one buffer; `parts` lists each copy's vertex range and bounding sphere so lamp shadow passes can skip far ones.
+function modelBatch(meshes,mats,idBase,shade){
+  const pcs=meshes.map(meshPieces), per=pcs.reduce((s,p)=>s+p.n,0), nIdx=meshes.reduce((s,m)=>s+m.idx.length,0);
+  if(idBase+per*mats.length>65535) fail('Too many pieces in one scene’s models');
+  const d=new Float32Array(nIdx*mats.length*12), parts=[]; let o=0;
+  mats.forEach((M,k)=>{ const sc=Math.hypot(M[0],M[1],M[2]), lo=[1e9,1e9,1e9], hi=[-1e9,-1e9,-1e9], first=o/12; let base=idBase+k*per;
+    meshes.forEach((m,mi)=>{ const {pos,nrm,uv,idx}=m, pc=pcs[mi].piece;
+      for(let t=0;t<idx.length;t++){ const i=idx[t], x=pos[i*3],y=pos[i*3+1],z=pos[i*3+2], a=nrm[i*3],b=nrm[i*3+1],c=nrm[i*3+2];
+        const p=[M[0]*x+M[4]*y+M[8]*z+M[12], M[1]*x+M[5]*y+M[9]*z+M[13], M[2]*x+M[6]*y+M[10]*z+M[14]];
+        for(let q=0;q<3;q++){ if(p[q]<lo[q]) lo[q]=p[q]; if(p[q]>hi[q]) hi[q]=p[q]; }
+        d[o++]=p[0]; d[o++]=p[1]; d[o++]=p[2];
+        d[o++]=(M[0]*a+M[4]*b+M[8]*c)/sc; d[o++]=(M[1]*a+M[5]*b+M[9]*c)/sc; d[o++]=(M[2]*a+M[6]*b+M[10]*c)/sc;
+        d[o++]=uv[i*2]; d[o++]=uv[i*2+1]; d[o++]=base+pc[i]; d[o++]=shade; d[o++]=0; d[o++]=2; }
+      base+=pcs[mi].n; });
+    parts.push({first,count:o/12-first,c:[(lo[0]+hi[0])/2,(lo[1]+hi[1])/2,(lo[2]+hi[2])/2],r:Math.hypot(hi[0]-lo[0],hi[1]-lo[1],hi[2]-lo[2])/2}); });
+  return {g:vao(d),pos:[0,0,0],rot:[0,0,0],count:per*mats.length,parts:mats.length>1?parts:null}; }
+function modelObject(mesh,idBase,shade){ return modelBatch([mesh],[M4.trs([0,0,0],[0,0,0])],idBase,shade); }
 // A height map for walking on a model: the highest surface under `ymax` in each cell (so decks are floors, and rails,
 // masts and anything else more than a step high are walls). parts: [[mesh, ymax], ...]. at(x, z) is null off the map.
 function heightField(parts,x0,x1,z0,z1,cell){
