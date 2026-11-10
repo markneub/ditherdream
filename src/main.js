@@ -115,7 +115,7 @@ function frame(now){
   gl.uniform2f(u.uCubeNF,CUBE_NEAR,sc.cubeFar);
   gl.uniform1f(u.uSky,sc.sky); gl.uniform1f(u.uFill,sc.fill); gl.uniform1f(u.uSunI,sc.sunI); gl.uniform1f(u.uT,T);
   gl.uniform1f(u.uEdge,sc.edge); gl.uniform1f(u.uFoam,sc.foam); gl.uniform1f(u.uFoamR,sc.foamR);
-  gl.uniform1f(u.uPix,2*Math.tan(FOV/2)/H); gl.uniform1f(u.uD,DOT_SPACING);
+  gl.uniform1f(u.uPix,2*Math.tan(FOV/2)/H); gl.uniform1f(u.uD,S.mode===2?ATK_SPACING:DOT_SPACING); gl.uniform1f(u.uFM,S.mode===2?1:0);
   gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D,shadowTex); gl.uniform1i(u.uShadow,0);
   for(let i=0;i<MAX_LAMPS;i++){ gl.activeTexture(gl.TEXTURE1+i); gl.bindTexture(gl.TEXTURE_CUBE_MAP,cubeTex[i]); gl.uniform1i(u['uCube'+i],1+i); }
   gl.activeTexture(gl.TEXTURE4); gl.bindTexture(gl.TEXTURE_2D,whiteTex); gl.uniform1i(u.uTex,4); gl.uniform2f(u.uTone,1,1);

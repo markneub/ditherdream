@@ -16,6 +16,7 @@ in vec3 wP; in vec3 wN; in vec3 vN; in vec4 sP; in vec2 vU; flat in vec4 vA; // 
 uniform sampler2DShadow uShadow; uniform samplerCubeShadow uCube0, uCube1, uCube2;
 uniform vec3 uSunDir, uEye; uniform vec3 uLamp[3]; uniform vec2 uLampP[3]; uniform vec4 uLampD[3]; // lamp position; (intensity, range); spot (direction, cos of half-angle; -2 = shines all round)
 uniform float uPix, uD, uT, uSky, uSunI, uFill, uFoam, uFoamR, uEdge; uniform vec2 uCubeNF; // cube shadow near, far
+uniform float uFM; // 1: the Atkinson-like look (see surf)
 uniform sampler2D uTex; uniform vec2 uTone; // a model's base-colour texture; (1 / its mean luminance, contrast)
 #define CN uCubeNF.x
 #define CF uCubeNF.y
@@ -44,19 +45,25 @@ float hullDist(vec2 p){
 float shipDist(vec2 p){ float t=(p.x+0.4)/8.4; return max(abs(p.y)-2.5*(1.0-t*t*t*t), abs(p.x+0.4)-8.4)*0.8; }
 // Surface-stable fractal dots: a self-similar Bayer point set stuck to the surface.
 // As the surface recedes, dots drop out in Bayer order so on-screen density stays constant.
+// uFM switches to an Atkinson-like look, still stuck to the surface: tone sets how MANY dots are on, not how big they are
+// (error diffusion is frequency-modulated), the dots are small squares like pixels, and which ones are on is the Bayer
+// order shuffled by a per-point random number, which breaks the regular pattern into something irregular.
 float surf(vec2 uv, float lum, float sigma){
-  bool darkDots = lum>0.5; float cov = darkDots ? 1.0-lum : lum;
-  if(cov<0.03) return darkDots ? 1.0 : 0.0;
-  cov=max(cov,0.055);
+  bool darkDots = lum>0.5; float cov = darkDots ? 1.0-lum : lum; bool fm=uFM>0.5;
+  if(cov<(fm?0.012:0.03)) return darkDots ? 1.0 : 0.0;
+  if(!fm) cov=max(cov,0.055);
   float l=log2(uD*sigma), L=floor(l), f=l-L, g=exp2(L);
   vec2 q=uv/g, c0=floor(q), fr=q-c0;
   float t=exp2(-2.0*f);
-  float r=exp2(f)*sqrt(cov/3.14159)*1.07;
+  float r=exp2(f)*(fm ? 0.36 : sqrt(cov/3.14159)*1.07), want=min(cov*2.0,1.0); // fm: the whole lattice is on at 50%
   float hit=0.0;
-  for(int i=0;i<4;i++){ vec2 o=vec2(float(i&1),float(i>>1));
-    float rk=rank(ivec2(c0+o));
-    float w=smoothstep(0.0,0.3,1.0-rk/t);
-    if(length(fr-o)<r*w) hit=1.0; }
+  for(int i=0;i<4;i++){ vec2 o=vec2(float(i&1),float(i>>1)), dv=fr-o; ivec2 c=ivec2(c0+o);
+    float rk=rank(c)/t, w=smoothstep(0.0,0.3,1.0-rk);
+    if(fm){ // the random number belongs to the point, whichever level it is seen at: strip the common factors of two
+      int m=c.x|c.y, k=m&(-m); if(k==0) k=1; ivec2 b=c/k;
+      float h=h21(vec2(b)+17.0*(L+floor(log2(float(k))+0.5)));
+      w*=smoothstep(0.0,0.3,1.0-(rk+0.7*(h-0.5))/want); }
+    if((fm ? max(abs(dv.x),abs(dv.y)) : length(dv))<r*w) hit=1.0; }
   return darkDots ? 1.0-hit : hit;
 }
 void main(){
@@ -93,6 +100,7 @@ void main(){
     lum=smoothstep(0.0,1.0,clamp((lum-0.03)/0.9,0.0,1.0));
   }
   lum=mix(lum,1.0,vA.z);
+  if(uFM>0.5) lum=clamp((lum-0.5)*1.3+0.5,0.0,1.0); // Atkinson drops a quarter of the error: highlights blow out, shadows crush
   float cs=abs(dot(n,Vd));
   float sigma=dist*uPix/sqrt(max(cs,0.1));
   // Models have scan-atlas UVs that would tear the lattice: project position along the normal's dominant axis instead (metres).
@@ -147,7 +155,7 @@ void main(){
       if(hash(cell+fo*57.0)>0.994 && max(abs(fr.x),abs(fr.y))<0.3){ bit=1.0; lum=0.8; }
     }
   } else {
-    bit = mode<0.5 ? L.r : step(rank(ivec2(gl_FragCoord.xy))+0.002, lum);
+    bit = (mode<0.5||mode>1.5) ? L.r : step(rank(ivec2(gl_FragCoord.xy))+0.002, lum);
   }
   if(raw>0.5){ o=vec4(mix(dark,light,lum),1.0); return; }
   if(edges>0.5){
