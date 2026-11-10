@@ -23,6 +23,8 @@ with Poly Haven furniture, both loaded from `assets/`.
 
 - `.github/workflows/pages.yml` runs on every push and publishes `index.html` + `src/` + `assets/` **only from the
   default branch** (`main`). Live at https://markneub.github.io/ditherdream/
+- **Auto-merge (the user's standing instruction, "for now"):** they test on the live site from a phone, so once a change is
+  pushed and `npm run shots` passes, open a pull request to `main` and merge it without asking first. Stop when they say so.
 - Pages source must be "GitHub Actions" (repo Settings → Pages). New top-level files the page needs
   must be added to the `cp` line in the workflow.
 
