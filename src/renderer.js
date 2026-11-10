@@ -42,7 +42,7 @@ gl.drawBuffers([gl.NONE]); gl.readBuffer(gl.NONE);
 
 let W=1,H=1, litTex, edgeTex, depthRB; const sceneFB=gl.createFramebuffer();
 function resize(){
-  const k=PIX[S.pix];
+  const k=PIXEL;
   W=Math.max(1,Math.ceil(innerWidth*dpr/k)); H=Math.max(1,Math.ceil(innerHeight*dpr/k));
   canvas.width=W; canvas.height=H; canvas.style.width=(W*k/dpr)+'px'; canvas.style.height=(H*k/dpr)+'px';
   if(litTex){ gl.deleteTexture(litTex); gl.deleteTexture(edgeTex); gl.deleteRenderbuffer(depthRB); }

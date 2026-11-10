@@ -12,25 +12,6 @@ const up=e=>{ptrs.delete(e.pointerId); if(ptrs.size<2)pinch0=0;};
 canvas.addEventListener('pointerup',up); canvas.addEventListener('pointercancel',up);
 canvas.addEventListener('wheel',e=>{e.preventDefault();radius=Math.min(60,Math.max(5,radius*Math.exp(e.deltaY*0.001)));},{passive:false});
 
-// ---------- UI ----------
-const $=id=>document.getElementById(id);
-function label(){
-  $('bDither').innerHTML='Dither: <b>'+(S.mode?'Screen Bayer':'Surface dots')+'</b>';
-  $('bDots').innerHTML='Dots: <b>'+DOTS[S.dots][0]+'</b>';
-  $('bEdge').innerHTML='Edges: <b>'+(S.edges?'on':'off')+'</b>';
-  $('bPix').innerHTML='Pixels: <b>'+PIX[S.pix]+'×</b>';
-  $('bPal').innerHTML='Palette: <b>'+PALS[S.pal].name+'</b>';
-  $('bRaw').innerHTML='View: <b>'+(S.raw?'Raw':'1-bit')+'</b>';
-  $('bSpin').innerHTML='Spin: <b>'+(S.spin?'on':'off')+'</b>';
-  document.body.style.background=PALS[S.pal].dark;
-}
-$('bDither').onclick=()=>{S.mode^=1;label();};
-$('bDots').onclick=()=>{S.dots=(S.dots+1)%DOTS.length;label();};
-$('bEdge').onclick=()=>{S.edges=!S.edges;label();};
-$('bPix').onclick=()=>{S.pix=(S.pix+1)%PIX.length;resize();label();};
-$('bPal').onclick=()=>{S.pal=(S.pal+1)%PALS.length;label();};
-$('bRaw').onclick=()=>{S.raw=!S.raw;label();};
-$('bSpin').onclick=()=>{S.spin=!S.spin;label();};
 window.__dbg={S,cam(t,p,r){theta=t;phi=p;radius=r;}};
 
 // ---------- loop ----------
@@ -59,7 +40,7 @@ function frame(now){
   gl.uniformMatrix4fv(u.uVP,false,VP); gl.uniformMatrix4fv(u.uV,false,V); gl.uniformMatrix4fv(u.uSunVP,false,sunVP);
   gl.uniform3fv(u.uSunDir,sunDir); gl.uniform3fv(u.uLamp,lampPos); gl.uniform3fv(u.uEye,eye);
   gl.uniform1f(u.uLampI,lampI); gl.uniform1f(u.uT,T);
-  gl.uniform1f(u.uPix,2*Math.tan(FOV/2)/H); gl.uniform1f(u.uD,DOTS[S.dots][1]);
+  gl.uniform1f(u.uPix,2*Math.tan(FOV/2)/H); gl.uniform1f(u.uD,DOT_SPACING);
   gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D,shadowTex); gl.uniform1i(u.uShadow,0);
   for(const o of objs){ gl.uniformMatrix4fv(u.uM,false,M4.trs(o.pos,o.rot)); gl.uniform1f(u.uShade,o.shade); gl.uniform1f(u.uEmit,o.emit); gl.uniform1f(u.uKind,o.kind); gl.uniform1f(u.uId,o.id);
     gl.bindVertexArray(o.g.a); gl.drawArrays(gl.TRIANGLES,0,o.g.n); }
@@ -72,10 +53,10 @@ function frame(now){
   gl.uniform2f(p.res,W,H); gl.uniform1f(p.tanHalf,Math.tan(FOV/2)); gl.uniform1f(p.aspect,W/H);
   gl.uniformMatrix3fv(p.camRot,false,new Float32Array([V[0],V[4],V[8], V[1],V[5],V[9], V[2],V[6],V[10]]));
   gl.uniform1f(p.mode,S.mode); gl.uniform1f(p.edges,S.edges?1:0); gl.uniform1f(p.raw,S.raw?1:0);
-  gl.uniform3fv(p.dark,hex(PALS[S.pal].dark)); gl.uniform3fv(p.light,hex(PALS[S.pal].light));
+  gl.uniform3fv(p.dark,DARK); gl.uniform3fv(p.light,LIGHT);
   gl.uniform3fv(p.uMoon,sunDir); gl.uniform3fv(p.uMoon2,moon2);
   gl.bindVertexArray(quad); gl.drawArrays(gl.TRIANGLES,0,3);
   gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D,null);
   requestAnimationFrame(frame);
 }
-resize(); label(); requestAnimationFrame(frame);
+resize(); requestAnimationFrame(frame);

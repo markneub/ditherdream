@@ -5,11 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <title>ditherdream</title>
 <style>
-  html,body{margin:0;height:100%;background:#333319;overflow:hidden;font:13px/1.2 ui-monospace,Menlo,Consolas,monospace;color:#ddd}
+  html,body{margin:0;height:100%;background:#000;overflow:hidden;font:13px/1.2 ui-monospace,Menlo,Consolas,monospace;color:#ddd}
   canvas{position:fixed;left:0;top:0;image-rendering:pixelated;image-rendering:crisp-edges;touch-action:none;display:block}
-  #ui{position:fixed;left:0;right:0;bottom:0;display:flex;flex-wrap:wrap;gap:6px;justify-content:center;padding:8px 8px calc(8px + env(safe-area-inset-bottom))}
-  #ui button{font:inherit;background:rgba(15,15,10,.88);color:#eee;border:1px solid #666;border-radius:6px;padding:7px 10px;cursor:pointer}
-  #ui button b{color:#fff;font-weight:600}
   #hint{position:fixed;top:10px;left:0;right:0;text-align:center;pointer-events:none}
   #hint span{background:rgba(15,15,10,.8);padding:4px 8px;border-radius:5px}
   #err{position:fixed;top:40px;left:10px;right:10px;color:#f88;white-space:pre-wrap;font-size:12px}
@@ -19,15 +16,6 @@
 <canvas id="c"></canvas>
 <div id="hint"><span>drag to orbit · pinch / scroll to zoom</span></div>
 <div id="err"></div>
-<div id="ui">
-  <button id="bDither"></button>
-  <button id="bDots"></button>
-  <button id="bEdge"></button>
-  <button id="bPix"></button>
-  <button id="bPal"></button>
-  <button id="bRaw"></button>
-  <button id="bSpin"></button>
-</div>
 <script src="src/state.js"></script>
 <script src="src/geometry.js"></script>
 <script src="src/shaders.js"></script>
