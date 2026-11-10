@@ -3,31 +3,33 @@
 // built here; the furniture is Poly Haven models (CC0) loaded from assets/ the first time the scene is opened.
 // Rooms: reception (SW, the spawn), pillar hall (S), the lone-chair room (SE), the cubicle farm (middle), a corridor
 // and three offices (E), meeting room and break room (NW), a long corridor with a store room behind it (NE).
-const OH=2.7, OT=0.14, DOOR_H=2.05;
+const OH=3.0, OT=0.14, DOOR_H=2.05;
 const OF={ rects:[], circles:[], inst:{}, fix:[] };
 beginScene();
 B(40,0.2,30,0,-0.1,0,0.5);                                                                // carpet
-for(let x=-19.4;x<20;x+=1.2) B(1.2,0.1,30,x,OH+0.05,0,0.9);                              // ceiling, in strips
+// a drop ceiling: 1.2 x 0.6 m tiles (the outline between neighbours is the grid), slightly uneven, a few missing
+const TILE=(x,z)=>[-19.4+1.2*Math.round((x+19.4)/1.2), -14.7+0.6*Math.round((z+14.7)/0.6)];
+{ const rnd=rng(5); for(let i=0;i<34;i++) for(let j=0;j<50;j++){ const gap=rnd()<0.012; B(1.2,0.04,0.6,-19.4+1.2*i,OH+0.02+(gap?0.5:0),-14.7+0.6*j,gap?0.08:0.84+0.08*rnd()); } }
 // A wall piece between two points on an axis-aligned centre line.
 function oSeg(x0,z0,x1,z1,y0=0,y1=OH,shade=0.76){ const w=Math.abs(x1-x0)||OT, d=Math.abs(z1-z0)||OT;
   B(w,y1-y0,d,(x0+x1)/2,(y0+y1)/2,(z0+z1)/2,shade); if(y0<1.6) OF.rects.push([(x0+x1)/2,(z0+z1)/2,w/2,d/2]); }
 // A wall along `ax` ('x' or 'z') at coordinate c, from a to b, with doors: [position, swing side (+1/-1), closed?].
-// An open door is a 1.2 m gap with a lintel, a frame, and the leaf standing open at right angles on the swing side;
+// An open door is a 1.6 m gap with a lintel, a frame, and two leaves standing open at right angles on the swing side;
 // a closed one is just a leaf and frame on that face of the wall (it leads nowhere).
-function oWall(ax,c,a,b,doors=[]){ const P=(u,v)=>ax==='x'?[u,v]:[v,u], w=1.2; let cur=a;
+function oWall(ax,c,a,b,doors=[]){ const P=(u,v)=>ax==='x'?[u,v]:[v,u]; let cur=a;
   const piece=(u0,u1,y0,y1)=>{ const p=P(u0,c), q=P(u1,c); oSeg(p[0],p[1],q[0],q[1],y0,y1); };
   const bx=(su,sy,sv,u,y,v,shade)=>{ const p=P(u,v), s=P(su,sv); B(s[0],sy,s[1],p[0],y,p[1],shade); };
-  for(const [p,side,closed] of [...doors].sort((m,n)=>m[0]-n[0])){
-    if(closed){ bx(w,DOOR_H,0.04,p,DOOR_H/2,c+side*(OT/2+0.02),0.68); bx(0.05,0.05,0.08,p+0.45,1.0,c+side*(OT/2+0.06),0.4); }
+  for(const [p,side,closed] of [...doors].sort((m,n)=>m[0]-n[0])){ const w=closed?1.0:1.6;
+    if(closed){ bx(w,DOOR_H,0.04,p,DOOR_H/2,c+side*(OT/2+0.02),0.68); bx(0.05,0.05,0.08,p+0.38,1.0,c+side*(OT/2+0.06),0.4); }
     else { piece(cur,p-w/2); piece(p-w/2,p+w/2,DOOR_H,OH); cur=p+w/2;
-      bx(0.04,DOOR_H-0.04,w-0.06,p-w/2,DOOR_H/2,c+side*(w/2+OT/2),0.68); const l=P(p-w/2,c+side*(w/2+OT/2)), h=P(0.02,w/2); OF.rects.push([l[0],l[1],h[0],h[1]]); }
+      for(const e of [-1,1]){ bx(0.04,DOOR_H-0.04,w/2-0.04,p+e*w/2,DOOR_H/2,c+side*(w/4+OT/2),0.68); const l=P(p+e*w/2,c+side*(w/4+OT/2)), h=P(0.02,w/4); OF.rects.push([l[0],l[1],h[0],h[1]]); } }
     for(const e of [-1,1]) bx(0.07,DOOR_H,OT+0.06,p+e*(w/2+0.01),DOOR_H/2,c,0.55);
     bx(w+0.16,0.07,OT+0.06,p,DOOR_H+0.035,c,0.55); }
   piece(cur,b); }
 // outer walls
 oWall('x',-15,-20,20); oWall('x',15,-20,20,[[-17,-1,1],[14,-1,1]]); oWall('z',-20,-15,15,[[2,1,1]]); oWall('z',20,-15,15,[[-8.5,-1,1],[11,-1,1]]);
 // the south band (reception | pillar hall | lone-chair room) and its wall to the middle
-oWall('x',7,-20,20,[[-15,1],[0,-1],[7.3,1]]); oWall('z',-10,7,15,[[11,1]]); oWall('z',8,7,15,[[11.5,-1]]);
+oWall('x',7,-20,20,[[-15,1],[0,-1],[7,-1]]); oWall('z',-10,7,15,[[11,1]]); oWall('z',8,7,15,[[11.5,-1]]);
 // the middle band: cubicle farm | corridor | three offices
 oWall('z',6,-7,7,[[-4,1],[4,-1]]); oWall('z',9,-7,7,[[-4.6,1],[0,1],[4.6,1]]); oWall('x',-2.3,9,20); oWall('x',2.3,9,20);
 // the north band: meeting room | break room | long corridor, with the store room behind it
@@ -45,17 +47,19 @@ for(const [x,z,s,r] of [[3,-14.6,0.4,0.2],[7.9,-14.6,0.35,0.5],[17.5,-13.6,0.6,0
 OF.rects.push([17.9,-13.2,0.75,0.75]);
 
 // Light fittings: [x, z, kind]. 0 steady, 1 flickering, 2 dying (mostly dark, strikes now and then), 3 dead.
-function oLights(list){ for(const [x,z,kind=0] of list){ const f={x,z,kind,seed:OF.fix.length*7.31+1.7,on:1};
-  B(1.3,0.05,0.36,x,OH-0.025,z,0.5);                                                                    // housing
-  if(kind<3) f.obj=add(box(1.2,0.03,0.26),[x,OH-0.065,z],[0,0,0],1,{emit:1,dyn:true}); else B(1.2,0.03,0.26,x,OH-0.065,z,0.35);
+// Each is a panel set into the ceiling grid in place of a tile: a dark one, with a glowing one under it while it is lit.
+const TUBE_Y=OH-0.02;
+function oLights(list){ for(const [px,pz,kind=0] of list){ const [x,z]=TILE(px,pz), f={x,z,kind,seed:OF.fix.length*7.31+1.7,on:1};
+  B(1.14,0.02,0.54,x,OH-0.008,z,0.3);
+  if(kind<3) f.obj=add(box(1.12,0.02,0.52),[x,TUBE_Y,z],[0,0,0],1,{emit:1,dyn:true});
   OF.fix.push(f); } }
-oLights([[-17,12.5],[-13,10,1],                                                          // reception
+oLights([[-17,12.5],[-13,10],                                                          // reception
   [-7,11],[-3,11,3],[1,11,1],[5,11],[-3,13.8,3],                                         // pillar hall
   [14,11,2],[17,13,3],[11,13,3],                                                         // lone-chair room
-  [-18.3,-4,1],[-18.3,3],[-14,0],[-8.8,0,1],[-3.6,0],[-14,6.1,3],[-8.8,6.1],[-3.6,6.1,3],[-14,-6.1],[-8.8,-6.1,3],[-3.6,-6.1,1],[2.5,0],[3.5,-5,3],[3.5,5],  // farm
-  [7.5,-4.5],[7.5,0.5,1],[7.5,5],                                                        // corridor
-  [14.5,-4.6],[14.5,0,1],[14.5,4.6,2],                                                   // offices
-  [-14.5,-11],[-4.5,-11,1],                                                              // meeting, break room
+  [-18.3,-4],[-18.3,3],[-14,0],[-8.8,0],[-3.6,0],[-14,6.1,3],[-8.8,6.1],[-3.6,6.1,3],[-14,-6.1],[-8.8,-6.1,3],[-3.6,-6.1,1],[2.5,0],[3.5,-5,3],[3.5,5],  // farm
+  [7.5,-4.5],[7.5,0.5],[7.5,5],                                                        // corridor
+  [14.5,-4.6],[14.5,0,1],[14.5,4.6],                                                   // offices
+  [-14.5,-11],[-4.5,-11],                                                              // meeting, break room
   [3,-8.5],[8,-8.5,3],[12.5,-8.5,1],[17,-8.5],                                           // long corridor
   [9,-12.5,2]]);                                                                         // store room
 
@@ -79,7 +83,13 @@ const plant=(x,z,ry=0)=>{ put('potted_plant_04',x,z,ry,0,3.4); OF.circles.push([
     if(what.includes('x')) chair(x+0.5,dz+side*1.35,rnd()*6.28); } }
 // reception: a desk facing the door you can't open, a sofa, a plant, a clock
 desk(-16.5,9.6,0); chair(-16.5,8.75,0.2); tv(-17,9.55,0.3); put('sofa_02',-19.3,12.2,HP); OF.rects.push([-19.3,12.2,0.45,0.9]); plant(-19.3,14.3); plant(-10.7,7.8,2);
-put('wall_clock',-13,14.92,Math.PI,2.05,1.6); put('wall_clock',-14.5,-14.92,0,2.05,1.6);
+// The clocks: the model's glass is opaque here and its numerals are only texture, so the marks and hands are added in front.
+// `face` is the way it looks (+1 towards +z, -1 towards -z); both stopped at the same time.
+function oClock(x,z,face){ const s=2.2, y=2.3, r=0.14*s, zf=z+face*0.052*s; put('wall_clock',x,z,face>0?0:Math.PI,y,s);
+  const mark=(th,len,wid,rad,dz)=>add(box(wid,len,0.006),[x+face*Math.sin(th)*rad,y+Math.cos(th)*rad,zf+face*dz],[0,0,-face*th],0.05);
+  for(let h=0;h<12;h++) mark(h*Math.PI/6,h%3?0.035:0.06,h%3?0.014:0.024,r*0.86,0);
+  mark((3+47/60)*Math.PI/6,r*0.5,0.03,r*0.25,0.008); mark(47*Math.PI/30,r*0.8,0.02,r*0.4,0.016); }
+oClock(-13,14.92,-1); oClock(-14.5,-14.92,1);
 // the lone-chair room: one plastic chair in front of a screen on the floor
 mono(14.6,11.4,HP+0.1); tv(16.4,11.3,-HP,0);
 add(box(0.01,0.25,0.33),[16.17,0.25,11.31],[0,0,0],1,{emit:1});                         // ... which is on
@@ -99,23 +109,23 @@ chair(1.2,12.9,2.5); plant(4.6,-6.2); desk(3.8,2.2,HP); tv(3.75,2.3,HP+0.2); mon
 
 // three lamps do the lighting: each frame they sit at the three nearest working fittings (see update)
 const officeLamps=[0,1,2].map(i=>({pos:[0,OH-0.3,0],intensity:0,range:9.5,flicker:0,phase:i}));
-const OFFICE=endScene({ name:'office', title:'The office', loadingText:'loading the furniture…', sky:1.7, sunI:0, noSun:true, fill:0.16, cubeFar:14,
+const OFFICE=endScene({ name:'office', title:'The office', loadingText:'loading the furniture…', sky:1.7, sunI:0, noSun:true, fill:0.2, cubeFar:14,
   spawn:{ x:-17.6, z:12.6, yaw:-Math.PI/2 }, tip:'nobody else is here' });
 OFFICE.lamps.push(...officeLamps);
 OFFICE.floorAt=(x,z)=>(Math.abs(x)>19.9||Math.abs(z)>14.9||walkBlocked(x,z,OF.circles,OF.rects))?null:0;
-// How lit a fitting is at time T, 0..1. Random numbers change 24 times a second, like a tube failing to strike.
+// How lit a fitting is at time T, 0..1. Most are steady; four stutter now and then and two are nearly dead.
 function tubeOn(f,T){ const h=k=>{ const v=Math.sin((Math.floor(T*k)+f.seed)*127.1+f.seed*311.7)*43758.5453; return v-Math.floor(v); };
   if(f.kind===0) return 1;
-  if(f.kind===1) return h(1.3)<0.3 ? (h(24)<0.55?1:0.08) : (h(24)<0.04?0.2:1);            // steady, with fits of stuttering
-  if(f.kind===2) return h(0.9)<0.22 ? (h(24)<0.5?1:0) : (h(24)<0.015?0.7:0);              // dark, with now and then a try
+  if(f.kind===1) return h(0.4)<0.1 ? (h(12)<0.55?1:0.15) : 1;                             // steady; a short stutter every half minute or so
+  if(f.kind===2) return h(0.25)<0.18 ? (h(10)<0.45?1:0) : 0;                              // dark; tries to strike now and then
   return 0; }
 OFFICE.update=T=>{
   const px=player.x, pz=player.z, near=[];
-  for(const f of OF.fix){ if(f.kind===3) continue; f.on=tubeOn(f,T); f.obj.pos[1]=f.on>0.3?OH-0.065:-50; f.d=Math.hypot(f.x-px,f.z-pz); near.push(f); }
+  for(const f of OF.fix){ if(f.kind===3) continue; f.on=tubeOn(f,T); f.obj.pos[1]=f.on>0.3?TUBE_Y:-50; f.d=Math.hypot(f.x-px,f.z-pz); near.push(f); }
   near.sort((a,b)=>a.d-b.d);
   // the lamps fade out as their fitting is about to stop being one of the nearest three, so the swap never shows
   const d4=near[3].d;
-  officeLamps.forEach((l,i)=>{ const f=near[i]; l.pos=[f.x,OH-0.3,f.z]; l.intensity=1.9*f.on*Math.min(1,(d4-f.d)/2.5); });
+  officeLamps.forEach((l,i)=>{ const f=near[i]; l.pos=[f.x,OH-0.3,f.z]; l.intensity=1.9*f.on*Math.min(1,(d4-f.d)/1.5); });
 };
 OFFICE.load=()=>OFFICE._load||(OFFICE._load=(async()=>{
   const SHADE={ metal_office_desk:0.75, modern_arm_chair_01:0.6, Television_01:0.5, WetFloorSign_01:0.95, wall_clock:0.9, potted_plant_04:0.65, plastic_monobloc_chair_01:0.92, sofa_02:0.6, dining_table:0.8 };
