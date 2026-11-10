@@ -31,7 +31,7 @@ const VIEWS = [
 const WALKS = [
   ['deck-bow', 'deck', 10.5, 0, 1.571, 0], ['deck-quarterdeck', 'deck', -11, 3, -1.9, -0.1],
   ['anchor-deck', 'anchor', -4.6, 0.9, -1.571, 0], ['anchor-aft', 'anchor', 3.0, -1.3, 1.571, 0.1], ['anchor-up', 'anchor', -3.6, -1.1, -1.2, 0.75], ['anchor-quarterdeck', 'anchor', -7.2, 0.9, -1.75, -0.2, 3.1],
-  ['office-reception', 'office', -17.6, 12.6, -1.571, 0], ['office-hall', 'office', -8.5, 12.5, -1.4, 0], ['office-farm', 'office', -18.5, 0.5, -1.571, 0], ['office-cubicle', 'office', -14.2, -6.3, 2.72, -0.3],
+  ['office-reception', 'office', -17.6, 12.6, -1.571, 0], ['office-hall', 'office', -8.5, 12.5, -1.4, 0], ['office-clock', 'office', -13, 12.9, 3.1416, 0.22], ['office-door', 'office', -15, 10, 3.1416, 0], ['office-farm', 'office', -18.5, 0.5, -1.571, 0], ['office-cubicle', 'office', -14.2, -6.3, 2.72, -0.3],
   ['office-corridor', 'office', 1.5, -8.5, -1.571, 0], ['office-lone', 'office', 12.6, 12.7, -1.2, -0.25], ['office-meeting', 'office', -10.2, -8.2, 1.1, -0.1], ['office-office', 'office', 10.5, 0.6, -1.571, -0.05],
   ['hold-arrive', 'hold', 4.0, -1.0, 1.271, 0], ['hold-hammocks', 'hold', -2, 1.6, 2.2, 0.05], ['hold-ladder', 'hold', 2.2, -2.4, -1.95, 0.3],
   ['lighthouse-door', 'lighthouse', 9.5, 0, 1.571, 0.25], ['lighthouse-stairs', 'lighthouse', 1.3, -0.9, 1.9, 0.35, 0], ['lighthouse-lamp', 'lighthouse', 1.2, -1.0, 1.0, 0.1, 16], ['lighthouse-gallery', 'lighthouse', 1.9, -2.35, -2.2, -0.2, 16],

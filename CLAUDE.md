@@ -179,10 +179,15 @@ built in code, cubicles, Poly Haven office furniture, and about 30 seconds of un
 reception (spawn), pillar hall, a dark room with one chair and a lit screen, a 24-bay cubicle farm, a corridor with
 three offices, meeting room, break room, a long corridor and a store room. The room list is at the top of `office.js`.
 
-- **Plan:** `oWall(axis, c, a, b, doors)` builds a wall with 1.2 m doorways (lintel, frame, leaf standing open) or closed
-  dummy doors, and records colliders in `OF.rects`. Furniture helpers (`desk`, `chair`, `mono`, `table`, `tv`, `plant`)
+- **Plan:** `oWall(axis, c, a, b, doors)` builds a wall with 1.6 m double doorways (lintel, frame, two leaves standing open; the
+  user found 1.2 m too narrow to get through) or closed dummy doors, and records colliders in `OF.rects`. Furniture helpers (`desk`, `chair`, `mono`, `table`, `tv`, `plant`)
   add a model copy and its collider; rect-collider models must sit at quarter turns. Models face +z at `ry` 0.
-- **Lights:** 37 fittings (`oLights`), each steady, flickering, dying or dead; `tubeOn(f, T)` is its brightness, and a lit
+- **Ceiling:** 3 m up, a drop ceiling of 1700 separate 1.2 x 0.6 m tiles (the id outline between them is the grid; a few
+  are missing). The user found 2.7 m too low and plain strips unconvincing. Light fittings are panels snapped to the grid (`TILE`).
+- **Clocks:** the model's glass renders opaque and its numerals are texture only, so `oClock` adds dark hour marks and hands in front.
+- **Lights:** 37 fittings (`oLights`), each steady, flickering, dying or dead. **Keep flicker rare**: the first version had 11
+  stuttering fittings at 24 Hz and the user called it "way too much"; now four stutter briefly every half minute or so and two are nearly dead.
+  `tubeOn(f, T)` is its brightness, and a lit
   fitting's emissive tube is hidden (moved to y -50) while it is off. Only three lamps exist: every frame `update` puts
   them at the three nearest working fittings and fades each by how close it is to being swapped out (`d4 - d`), so the
   swap never pops. The result is that light follows you and rooms further off are black with white outlines. A lamp at
@@ -190,8 +195,8 @@ three offices, meeting room, break room, a long corridor and a store room. The r
 - **Models:** `modelBatch` bakes all copies of a model into one buffer per texture and keeps each copy's vertex range and
   bounding sphere (`parts`); lamp shadow passes draw only the copies within the lamp's range. `noSun` skips the sun's
   shadow pass (there is no sun indoors). Textures were shrunk to 512 px; see `assets/README.md`.
-- **First guesses, from headless stills only:** lamp brightness (1.9) and wall/carpet shades, which fittings flicker, the
-  flicker timing (never seen in motion), door width against the 0.3 m body radius. Not yet tried on a phone.
+- **First guesses, from headless stills only:** lamp brightness (1.9) and wall/carpet shades, the flicker timing (never seen
+  in motion here). Not yet tried on a phone.
 
 ## Ideas not yet tried
 
