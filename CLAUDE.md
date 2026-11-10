@@ -11,6 +11,13 @@ dithered with dots that stick to surfaces. No build step, no runtime dependencie
   installed Chrome instead of Playwright's download. Look at the PNGs after every visual change.
 - `window.__dbg` exposes `S` (the UI state) and `cam(theta, phi, radius)` for scripted views.
 
+## Deploy
+
+- `.github/workflows/pages.yml` runs on every push and publishes `index.html` + `src/` **only from the
+  default branch** (`main`). Live at https://markneub.github.io/ditherdream/
+- Pages source must be "GitHub Actions" (repo Settings → Pages). New top-level files the page needs
+  must be added to the `cp` line in the workflow.
+
 ## Layout
 
 Files load in this order and share the global scope (top-level `const`s are visible across files):
