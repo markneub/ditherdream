@@ -5,16 +5,28 @@ float rank(ivec2 p){ float r=0.0, s=0.25;
   return r; }`;
 
 const SCENE_VS=`#version 300 es
-in vec3 aP; in vec3 aN; in vec2 aU;
+in vec3 aP; in vec3 aN; in vec2 aU; in vec4 aA;
 uniform mat4 uM, uVP, uV, uSunVP;
-out vec3 wP; out vec3 wN; out vec3 vN; out vec4 sP; out vec2 vU;
-void main(){ vec4 w=uM*vec4(aP,1.0); wP=w.xyz; wN=mat3(uM)*aN; vN=mat3(uV)*wN; sP=uSunVP*w; vU=aU; gl_Position=uVP*w; }`;
+out vec3 wP; out vec3 wN; out vec3 vN; out vec4 sP; out vec2 vU; flat out vec4 vA;
+void main(){ vA=aA; vec4 w=uM*vec4(aP,1.0); wP=w.xyz; wN=mat3(uM)*aN; vN=mat3(uV)*wN; sP=uSunVP*w; vU=aU; gl_Position=uVP*w; }`;
 
 const SCENE_FS=`#version 300 es
-precision highp float; precision highp int; precision highp sampler2DShadow;
-in vec3 wP; in vec3 wN; in vec3 vN; in vec4 sP; in vec2 vU;
-uniform sampler2DShadow uShadow; uniform vec3 uSunDir, uLamp, uEye;
-uniform float uShade, uEmit, uId, uKind, uPix, uD, uT, uLampI;
+precision highp float; precision highp int; precision highp sampler2DShadow; precision highp samplerCubeShadow;
+in vec3 wP; in vec3 wN; in vec3 vN; in vec4 sP; in vec2 vU; flat in vec4 vA; // vA = (object id, shade, emissive, kind)
+uniform sampler2DShadow uShadow; uniform samplerCubeShadow uCube0, uCube1, uCube2;
+uniform vec3 uSunDir, uEye; uniform vec3 uLamp[3]; uniform vec2 uLampP[3]; // lamp position; (intensity, range)
+uniform float uPix, uD, uT, uSky, uSunI, uFill;
+const float CN=0.05, CF=25.0; // must match CUBE_NEAR / CUBE_FAR
+float cubeSh(samplerCubeShadow c, vec3 v, float bias){ vec3 a=abs(v); float m=max(max(a.x,max(a.y,a.z))-bias,CN);
+  float d=(CF+CN)/(CF-CN)-2.0*CF*CN/((CF-CN)*m); return texture(c,vec4(v,d*0.5+0.5)); }
+float lampLight(int i, vec3 n){ vec2 P=uLampP[i]; if(P.x<=0.0) return 0.0;
+  vec3 Lv=uLamp[i]-wP; float d=length(Lv), att=pow(clamp(1.0-d/P.y,0.0,1.0),2.0), nl=max(dot(n,Lv/d),0.0);
+  // a little unshadowed fill near each lamp stands in for light bouncing round the room
+  float fill=uFill*P.x*pow(clamp(1.0-d/(P.y*0.55),0.0,1.0),2.0);
+  if(att*nl<=0.0) return fill;
+  float bias=0.03+0.08*(1.0-nl);
+  float s = i==0 ? cubeSh(uCube0,-Lv,bias) : i==1 ? cubeSh(uCube1,-Lv,bias) : cubeSh(uCube2,-Lv,bias);
+  return nl*att*P.x*s+fill; }
 layout(location=0) out vec4 oLit; layout(location=1) out vec4 oEdge;
 ${RANK}
 float h21(vec2 p){ vec3 q=fract(vec3(p.xyx)*0.1031); q+=dot(q,q.yzx+33.33); return fract((q.x+q.y)*q.z); }
@@ -44,13 +56,14 @@ float surf(vec2 uv, float lum, float sigma){
 }
 void main(){
   vec3 n=normalize(wN); vec3 Vd=uEye-wP; float dist=length(Vd); Vd/=dist;
+  if(dot(n,Vd)<0.0) n=-n; // thin two-sided things (hammocks) light the side you see
   float lum;
   vec3 s=sP.xyz/sP.w*0.5+0.5; float sh=1.0;
   float ndl=max(dot(n,uSunDir),0.0);
   if(s.x>0.0&&s.x<1.0&&s.y>0.0&&s.y<1.0&&s.z<1.0){ sh=0.0; vec2 ts=vec2(1.0/2048.0); float bias=0.0006+0.002*(1.0-ndl);
     for(int x=-1;x<=1;x++) for(int y=-1;y<=1;y++) sh+=texture(uShadow, vec3(s.xy+vec2(x,y)*ts, s.z-bias));
     sh/=9.0; }
-  if(uKind>0.5){
+  if(vA.w>0.5){
     vec3 wn=normalize(vec3(0.22*sin(wP.x*0.9+uT*1.1)+0.18*sin(wP.z*1.7-uT*0.8+wP.x*0.3), 1.0, 0.22*sin(wP.z*1.1+uT*0.9)+0.18*sin(wP.x*2.1+uT*1.3)));
     float spec=pow(max(dot(reflect(-Vd,wn),uSunDir),0.0),50.0);
     float fog=exp(-dist/60.0);
@@ -60,19 +73,18 @@ void main(){
     float foam=smoothstep(1.3,0.15,hullDist(wP.xz)+0.9*vnoise(wP.xz*1.3+uT*0.25));
     lum=(0.42*crest*(0.4+0.6*sh)+1.3*spec*sh)*fog+0.75*foam;
   } else {
-    vec3 Lv=uLamp-wP; float d=length(Lv); float att=pow(clamp(1.0-d/7.0,0.0,1.0),2.0);
-    float lamp=max(dot(n,Lv/d),0.0)*att*uLampI;
-    float sky=0.05+0.05*n.y;
-    lum=uShade*(sky+1.9*ndl*sh+lamp);
+    float lamp=lampLight(0,n)+lampLight(1,n)+lampLight(2,n);
+    float sky=(0.05+0.05*n.y)*uSky;
+    lum=vA.y*(sky+uSunI*ndl*sh+lamp);
     lum=clamp(lum,0.0,1.0);
     lum=smoothstep(0.0,1.0,clamp((lum-0.03)/0.9,0.0,1.0));
   }
-  lum=mix(lum,1.0,uEmit);
+  lum=mix(lum,1.0,vA.z);
   float cs=abs(dot(n,Vd));
   float sigma=dist*uPix/sqrt(max(cs,0.1));
   float bit=surf(vU,lum,sigma);
   oLit=vec4(bit,lum,0.0,1.0);
-  oEdge=vec4(normalize(vN)*0.5+0.5,uId);
+  oEdge=vec4(normalize(vN)*0.5+0.5,vA.x);
 }`;
 
 const SHADOW_VS=`#version 300 es

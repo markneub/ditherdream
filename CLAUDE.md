@@ -1,7 +1,7 @@
 # ditherdream
 
-A 1-bit, Obra Dinn-inspired renderer experiment: a small moonlit ship scene in plain WebGL2,
-dithered with dots that stick to surfaces. No build step, no runtime dependencies.
+A 1-bit, Obra Dinn-inspired renderer experiment: a small moonlit ship in plain WebGL2 (its deck,
+and the hold below it), dithered with dots that stick to surfaces. No build step, no runtime dependencies.
 
 ## Run and check
 
@@ -30,13 +30,16 @@ Files load in this order and share the global scope (top-level `const`s are visi
 | `src/geometry.js` | Matrix helpers; box / wedge / cylinder / sphere builders (pos3, normal3, uv2) |
 | `src/shaders.js` | All GLSL: `SCENE_*` (lighting + surface dots), `SHADOW_*`, `POST_*` (sky, edges, palette) |
 | `src/renderer.js` | GL setup, programs, shadow map, MRT framebuffer, `resize()` |
-| `src/scene.js` | The ship: every object is one `add(geometry, pos, rot, shade, opts)` call |
-| `src/walk.js` | First-person `player`, `floorAt()` + colliders for the ship, touch and desktop controls |
+| `src/scene.js` | Scene builder (`beginScene`/`add`/`lantern`/`endScene`) and `DECK`; every object is one `add(geometry, pos, rot, shade, opts)` |
+| `src/hold.js` | `HOLD`: below decks (same ship coordinates; floor at `FY`) |
+| `src/walk.js` | First-person `player`, each scene's `floorAt`/colliders/`exit`/`spawn`, `scene` (the current one), touch and desktop controls |
 | `src/main.js` | Orbit input, `setView('orbit' or 'walk')`, the frame loop (shadow pass, scene pass, post pass) |
 
 ## How the frame is built
 
-1. **Shadow pass**: depth from the moon into a 2048 px shadow map.
+1. **Shadow passes**: depth from the moon into a 2048 px shadow map, then a 512 px depth **cube map per
+   lantern** (up to 3, six faces each, every frame, since the lanterns swing; `cubeSh` in `SCENE_FS`
+   with a world-space bias). Static geometry is one baked buffer per scene, so each pass is one draw.
 2. **Scene pass** into two targets: `lit` = (surface-dot bit, luminance) and `edge` = (view normal, object id).
 3. **Post pass**: picks the surface bit or screen-space Bayer, draws sky/stars/moon where id = 0,
    then 1 px outlines where id or normal changes between neighbouring pixels, then maps to the 2-colour palette.
@@ -48,9 +51,22 @@ exact block of screen pixels.
 pixels per scene pixel on a phone, outlines on, pure black and white. `S.mode = 1` (screen-space
 Bayer), `S.raw`, `S.edges` and `S.spin` remain as dev switches via `window.__dbg.S`.
 
+## Scenes
+
+- A scene is `{statics, dyn, lamps, sky, sunI, fill, floorAt, exit, spawn}`. Per-object data (id, shade,
+  emissive, kind) rides in a 4th vertex attribute (`aA` → `vA`), not uniforms. **At most 254 objects per
+  scene** (ids are 8-bit in the edge buffer; `endScene` fails loudly). Add a `<script>` tag for a new scene file.
+- `DECK`: moonlit, one lantern, orbit or walk. `HOLD`: walk only; three lanterns with hard swinging
+  shadows, moonlight only through the hatch and its grating, `fill` (a little unshadowed light near
+  each lamp, standing in for bounce) so surfaces by a lamp aren't pure black.
+- Moving between them: `scene.exit(player)` returns `{scene, x, z, yaw}`. On deck, stepping into the open
+  aft part of the hatch goes below; in the hold, walking into the ladder goes up. Arrivals sit outside
+  both trigger zones. `setScene()` cuts with a short fade. `?scene=hold` starts below decks.
+- Shots: `__dbg.walk(x, z, yaw, pitch, 'hold')`; the walk test also goes down the hatch and up the ladder.
+
 ## Walking (`src/walk.js`)
 
-The one button on screen switches between orbiting and walking the deck (the user asked for a
+The one button on screen switches between orbiting the deck and walking (the user asked for a
 first-person scene with **the same walk controls as their pacnw project**; this is a port of its
 `touch.js`/`player.js`, keep the two in step):
 
@@ -98,10 +114,12 @@ After Rune Skovbo Johansen's "surface-stable fractal dithering", done procedural
 - Spheres and the bow wedge use per-triangle planar UVs, so the pattern has seams there.
 - Sea: black with broken swell bands, foam along the hull (`hullDist`) and moon glitter; star cells can twinkle.
 - Outlines are 1 px and can clutter on thin distant objects (balusters, cannon wheels).
-- Lantern light casts no shadows.
+- The hold's floor is mid-tone dots nearly everywhere a lamp reaches: busy. Fewer, brighter pools might read better.
+- Looking up through the hatch from the hold shows sky only (the deck's mast and rigging aren't in that scene).
 
 ## Ideas not yet tried
 
-Hatching or line patterns instead of dots; per-material patterns (Obra Dinn mixes Bayer and
+More scenes (the user liked: lighthouse with a sweeping beam, forest at night, cathedral, train carriage,
+desert ruins at noon). Hatching or line patterns instead of dots; per-material patterns (Obra Dinn mixes Bayer and
 blue noise); importing a glTF model; dot anti-shimmer by
 snapping dot centres to pixel centres.

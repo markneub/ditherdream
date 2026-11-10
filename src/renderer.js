@@ -5,7 +5,7 @@ if(!gl) fail('WebGL2 is not available in this browser.');
 function shader(type,src){ const s=gl.createShader(type); gl.shaderSource(s,src); gl.compileShader(s);
   if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)) fail('Shader error: '+gl.getShaderInfoLog(s)); return s; }
 function program(vs,fs){ const p=gl.createProgram(); gl.attachShader(p,shader(gl.VERTEX_SHADER,vs)); gl.attachShader(p,shader(gl.FRAGMENT_SHADER,fs));
-  gl.bindAttribLocation(p,0,'aP'); gl.bindAttribLocation(p,1,'aN'); gl.bindAttribLocation(p,2,'aU'); gl.linkProgram(p);
+  gl.bindAttribLocation(p,0,'aP'); gl.bindAttribLocation(p,1,'aN'); gl.bindAttribLocation(p,2,'aU'); gl.bindAttribLocation(p,3,'aA'); gl.linkProgram(p);
   if(!gl.getProgramParameter(p,gl.LINK_STATUS)) fail('Link error: '+gl.getProgramInfoLog(p));
   const u={}; const n=gl.getProgramParameter(p,gl.ACTIVE_UNIFORMS); for(let i=0;i<n;i++){ const nm=gl.getActiveUniform(p,i).name; u[nm]=gl.getUniformLocation(p,nm); }
   return {p,u}; }
@@ -20,10 +20,12 @@ const postProg=program(POST_VS,POST_FS);
 
 function vao(data){ const a=gl.createVertexArray(); gl.bindVertexArray(a); const b=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,b);
   gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(data),gl.STATIC_DRAW);
-  gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0,3,gl.FLOAT,false,32,0);
-  gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1,3,gl.FLOAT,false,32,12);
-  gl.enableVertexAttribArray(2); gl.vertexAttribPointer(2,2,gl.FLOAT,false,32,24);
-  gl.bindVertexArray(null); return {a,n:data.length/8}; }
+  // 12 floats per vertex: position 3, normal 3, uv 2, then (object id, shade, emissive, kind)
+  gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0,3,gl.FLOAT,false,48,0);
+  gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1,3,gl.FLOAT,false,48,12);
+  gl.enableVertexAttribArray(2); gl.vertexAttribPointer(2,2,gl.FLOAT,false,48,24);
+  gl.enableVertexAttribArray(3); gl.vertexAttribPointer(3,4,gl.FLOAT,false,48,32);
+  gl.bindVertexArray(null); return {a,n:data.length/12}; }
 const quad=(()=>{ const a=gl.createVertexArray(); gl.bindVertexArray(a); const b=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,b);
   gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,0, 3,-1,0, -1,3,0]),gl.STATIC_DRAW);
   gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0,3,gl.FLOAT,false,12,0); gl.bindVertexArray(null); return a; })();
@@ -39,6 +41,19 @@ gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_COMPARE_FUNC,gl.LEQUAL);
 const shadowFB=gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER,shadowFB);
 gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.DEPTH_ATTACHMENT,gl.TEXTURE_2D,shadowTex,0);
 gl.drawBuffers([gl.NONE]); gl.readBuffer(gl.NONE);
+
+// Lantern shadows: one depth cube map per lamp (up to 3), re-rendered every frame because the lanterns swing.
+const CUBE=512, CUBE_NEAR=0.05, CUBE_FAR=25, MAX_LAMPS=3;
+const cubeTex=[]; for(let i=0;i<MAX_LAMPS;i++){ const t=gl.createTexture(); gl.bindTexture(gl.TEXTURE_CUBE_MAP,t);
+  for(let f=0;f<6;f++) gl.texImage2D(gl.TEXTURE_CUBE_MAP_POSITIVE_X+f,0,gl.DEPTH_COMPONENT24,CUBE,CUBE,0,gl.DEPTH_COMPONENT,gl.UNSIGNED_INT,null);
+  for(const [k,v] of [[gl.TEXTURE_MIN_FILTER,gl.LINEAR],[gl.TEXTURE_MAG_FILTER,gl.LINEAR],[gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE],[gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE],[gl.TEXTURE_WRAP_R,gl.CLAMP_TO_EDGE],[gl.TEXTURE_COMPARE_MODE,gl.COMPARE_REF_TO_TEXTURE],[gl.TEXTURE_COMPARE_FUNC,gl.LEQUAL]]) gl.texParameteri(gl.TEXTURE_CUBE_MAP,k,v);
+  cubeTex.push(t); }
+gl.bindTexture(gl.TEXTURE_CUBE_MAP,null);
+const cubeFB=gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER,cubeFB);
+gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.DEPTH_ATTACHMENT,gl.TEXTURE_CUBE_MAP_POSITIVE_X,cubeTex[0],0);
+gl.drawBuffers([gl.NONE]); gl.readBuffer(gl.NONE);
+const CUBE_PROJ=M4.persp(Math.PI/2,1,CUBE_NEAR,CUBE_FAR);
+const CUBE_FACES=[[[1,0,0],[0,-1,0]],[[-1,0,0],[0,-1,0]],[[0,1,0],[0,0,1]],[[0,-1,0],[0,0,-1]],[[0,0,1],[0,-1,0]],[[0,0,-1],[0,-1,0]]];
 
 let W=1,H=1, litTex, edgeTex, depthRB; const sceneFB=gl.createFramebuffer();
 function resize(){

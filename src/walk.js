@@ -3,21 +3,37 @@
 // pointer lock + WASD on desktop. Yaw 0 faces -z; positive yaw turns left.
 const WALK = { speed: 2.4, run: 5, eye: 1.7, radius: 0.3, stepUp: 0.45, drop: 0.6 };
 
-// What you can't walk through, in deck coordinates (see scene.js). Circles: [x, z, r]; rects: [x, z, halfX, halfZ].
-const WALK_CIRCLES = [[2,0,0.45],[5,4.6,0.55],[6.35,4.9,0.55],[5.7,3.5,0.55],[8.4,4.2,0.85],[-10.2,0.2,0.42],[-9.05,0,0.55],[-2.6,4.6,1.15]];
-const WALK_RECTS = [[-1.6,-4.3,0.85,0.85],[0.2,-4.7,0.7,0.7],[4.5,-5.3,0.6,1.3],[8.5,-5.3,0.6,1.3]];
-
+// What you can't walk through, per scene (keep in step with scene.js / hold.js). Circles: [x, z, r]; rects: [x, z, halfX, halfZ].
+function walkBlocked(x, z, circles, rects) {
+  const r = WALK.radius;
+  for (const c of circles) if (Math.hypot(x - c[0], z - c[1]) < c[2] + r) return true;
+  for (const b of rects) if (Math.abs(x - b[0]) < b[2] + r && Math.abs(z - b[1]) < b[3] + r) return true;
+  return false;
+}
+const DECK_CIRCLES = [[2,0,0.45],[5,4.6,0.55],[6.35,4.9,0.55],[5.7,3.5,0.55],[8.4,4.2,0.85],[-10.2,0.2,0.42],[-9.05,0,0.55],[-2.6,4.6,1.15]];
+const DECK_RECTS = [[-1.6,-4.3,0.85,0.85],[0.2,-4.7,0.7,0.7],[4.5,-5.3,0.6,1.3],[8.5,-5.3,0.6,1.3]];
 /** Height of the walkable surface at (x, z), or null where you can't stand (overboard, inside something). */
-function floorAt(x, z) {
-  const r = WALK.radius, az = Math.abs(z);
+DECK.floorAt = (x, z) => {
+  const az = Math.abs(z);
   if (x < -11.7 || x > 17 || az > Math.min(6.4, 7 * (18 - x) / 6 - 0.92)) return null;
-  for (const c of WALK_CIRCLES) if (Math.hypot(x - c[0], z - c[1]) < c[2] + r) return null;
-  for (const b of WALK_RECTS) if (Math.abs(x - b[0]) < b[2] + r && Math.abs(z - b[1]) < b[3] + r) return null;
+  if (walkBlocked(x, z, DECK_CIRCLES, DECK_RECTS)) return null;
   if (x < -6) return 1.4;                                              // quarterdeck
   if (az < 1.5 && x < -4.5) return x < -5.5 ? 1.05 : x < -5 ? 0.7 : 0.35; // steps
   if (Math.abs(x - 7) < 1.6 && az < 1.6) return 0.22;                  // hatch
   return 0;
-}
+};
+const HOLD_CIRCLES = [[2,0,0.47],[-9,0,0.14],[-5,0,0.14],[-1,0,0.14],[9,0,0.14],[-6.5,-3.05,0.22],[-6.5,-1.35,0.22],[3.3,1.6,0.2], ...BARRELS.map(b => [b[0], b[1], 0.55])];
+const HOLD_RECTS = [[-1.85,-5.6,1.5,0.6],[3.5,-5.5,0.65,0.65],[4.9,-5.65,0.6,0.6],[-6.5,-2.2,0.9,0.45],[10.4,4.6,0.58,0.33], ...HAMMOCKS.map(h => [h[0], h[1], 1.25, 0.4])];
+HOLD.floorAt = (x, z) => (Math.abs(x) > 11.7 || Math.abs(z) > 6.1 || walkBlocked(x, z, HOLD_CIRCLES, HOLD_RECTS)) ? null : FY;
+
+// Ways between scenes: stepping into the open hatch on deck takes you below; walking into the ladder takes you up.
+// Arrivals are outside both trigger zones, facing aft (yaw pi/2 looks along -x).
+DECK.exit = p => (p.x > 5.6 && p.x < 6.7 && Math.abs(p.z) < 1.2) ? { scene: HOLD, x: 4.0, z: -1.0, yaw: Math.PI / 2 - 0.3 } : null;
+HOLD.exit = p => (p.x > 4.55 && p.x < 5.5 && Math.abs(p.z) < 0.5) ? { scene: DECK, x: 4.6, z: 0, yaw: Math.PI / 2 } : null;
+DECK.spawn = { x: 10.5, z: 0, yaw: Math.PI / 2 }; HOLD.spawn = { x: 4.0, z: -1.0, yaw: Math.PI / 2 - 0.3 };
+
+let scene = DECK;
+function floorAt(x, z) { return scene.floorAt(x, z); }
 
 const player = {
   x: 10.5, z: 0, y: 0, yaw: Math.PI / 2, pitch: 0, vx: 0, vz: 0,

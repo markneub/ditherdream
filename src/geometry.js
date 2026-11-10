@@ -46,3 +46,12 @@ function sphere(r,ws,hs){ const g=G(), P=(i,j)=>{ const th=j/hs*Math.PI, ph=i/ws
   for(let j=0;j<hs;j++) for(let i=0;i<ws;i++){ const a=P(i,j),b=P(i+1,j),c=P(i+1,j+1),d=P(i,j+1), s=v=>v.map(t=>t*r);
     if(j>0) g.tri(s(a),s(b),s(c),a,b,c); if(j<hs-1) g.tri(s(a),s(c),s(d),a,c,d); }
   return g.v; }
+// A slung cloth (hammock): hangs along x with a parabolic sag, narrow at the ends, edges curled up. Normals face up.
+function sling(len,width,sag,nx=12,nz=6){ const g=G();
+  const P=(i,j)=>{ const t=i/nx*2-1, sgm=j/nz*2-1, w=width/2*(1-0.8*t*t)+0.03;
+    return [t*len/2, -sag*(1-t*t)+0.3*width*sgm*sgm*(1-t*t), sgm*w]; };
+  const Nn=(i,j)=>{ const a=P(Math.max(i-1,0),j), b=P(Math.min(i+1,nx),j), c=P(i,Math.max(j-1,0)), d=P(i,Math.min(j+1,nz)); return norm(cross(sub(d,c),sub(b,a))); };
+  const U=p=>[p[0],p[2]];
+  for(let i=0;i<nx;i++) for(let j=0;j<nz;j++){ const a=P(i,j),b=P(i+1,j),c=P(i+1,j+1),d=P(i,j+1), na=Nn(i,j),nb=Nn(i+1,j),nc=Nn(i+1,j+1),nd=Nn(i,j+1);
+    g.tri(a,b,c,na,nb,nc,U(a),U(b),U(c)); g.tri(a,c,d,na,nc,nd,U(a),U(c),U(d)); }
+  return g.v; }

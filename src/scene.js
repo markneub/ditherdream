@@ -1,6 +1,29 @@
-// ---------- scene: a small ship at night ----------
-const objs=[]; const HP=Math.PI/2;
-function add(geo,pos,rot=[0,0,0],shade=1,o={}){ const ob=Object.assign({g:vao(geo),pos,rot,shade,emit:0,kind:0,id:(objs.length+1)/255},o); objs.push(ob); return ob; }
+// ---------- scene building ----------
+// A scene is built between beginScene() and endScene(). Every add() is one object with its own id
+// (outlines are drawn between ids). Static objects are baked into one vertex buffer (one draw call,
+// which keeps the 6-faces-per-lantern shadow passes cheap); `dyn`, emissive and sea objects keep
+// their own buffer and transform.
+const HP=Math.PI/2;
+let _items=null;
+function beginScene(){ _items=[]; }
+function add(geo,pos,rot=[0,0,0],shade=1,o={}){
+  const it={geo,pos,rot,shade,emit:o.emit||0,kind:o.kind||0,dyn:!!o.dyn,id:(_items.length+1)/255};
+  it.noShadow=!!(o.noShadow||it.emit||it.kind); _items.push(it); return it; }
+function packInto(out,it,M){ const g=it.geo;
+  for(let i=0;i<g.length;i+=8){ let px=g[i],py=g[i+1],pz=g[i+2],nx=g[i+3],ny=g[i+4],nz=g[i+5];
+    if(M){ const x=M[0]*px+M[4]*py+M[8]*pz+M[12], y=M[1]*px+M[5]*py+M[9]*pz+M[13], z=M[2]*px+M[6]*py+M[10]*pz+M[14];
+      const a=M[0]*nx+M[4]*ny+M[8]*nz, b=M[1]*nx+M[5]*ny+M[9]*nz, c=M[2]*nx+M[6]*ny+M[10]*nz; px=x;py=y;pz=z;nx=a;ny=b;nz=c; }
+    out.push(px,py,pz,nx,ny,nz,g[i+6],g[i+7],it.id,it.shade,it.emit,it.kind); } }
+function endScene(props){
+  if(_items.length>254) fail('Too many objects in one scene: '+_items.length+' (ids are 8-bit)');
+  const st=[], dyn=[];
+  for(const it of _items){ if(it.dyn||it.noShadow){ const d=[]; packInto(d,it,null); it.g=vao(d); dyn.push(it); } else packInto(st,it,M4.trs(it.pos,it.rot)); it.geo=null; }
+  const sc=Object.assign({statics:vao(st),dyn,lamps:[],count:_items.length},props); _items=null; return sc; }
+/** A hanging lantern that swings with the ship: a glowing ball on a pivot. */
+function lantern(pivot,len,phase,intensity,range){ return {pivot,len,phase,intensity,range,pos:[pivot[0],pivot[1]-len,pivot[2]],obj:add(sphere(0.11+len*0.2,12,8),[0,0,0],[0,0,0],1,{emit:1,dyn:true})}; }
+
+// ---------- the deck: a small ship at night ----------
+beginScene();
 add(box(600,0.2,600),[0,-2.7,0],[0,0,0],1,{kind:1});                 // sea
 add(box(24,2.8,14),[0,-1.6,0],[0,0,0],0.55);                         // hull
 add(wedge(6,3,14),[12,-1.5,0],[0,0,0],0.6);                          // bow
@@ -34,15 +57,22 @@ add(cyl(0.55,0.55,1.4,18),[8.4,0.55,4.2],[HP,0.5,0],0.78);
 // hatch
 add(box(3.2,0.22,3.2),[7,0.11,0],[0,0,0],0.9);
 add(box(2.6,0.3,2.6),[7,0.15,0],[0,0,0],0.3);
+// ... its forward part under a grating, the aft part open with the ladder's rails standing out of it
+for(let x=6.84;x<8.3;x+=0.28) add(box(0.1,0.06,2.6),[x,0.33,0],[0,0,0],0.9);
+for(const z of [-0.45,0.45]) add(box(1.6,0.06,0.08),[7.5,0.33,z],[0,0,0],0.9);
+for(const z of [-0.3,0.3]) add(box(0.08,0.75,0.08),[5.82,0.6,z],[0,0,0],0.8);
 // cannons
 for(const x of [4.5,8.5]){ add(box(1.0,0.45,1.7),[x,0.42,-5.0],[0,0,0],0.6);
   add(cyl(0.2,0.3,2.5,14),[x,0.85,-5.5],[-HP,0,0],0.45);
   for(const dx of [-0.58,0.58]) for(const dz of [-0.5,0.5]) add(cyl(0.25,0.25,0.14,12),[x+dx,0.25,-5.0+dz],[0,0,HP],0.5); }
 // lantern
 add(box(0.9,0.08,0.08),[2.6,3.3,0],[0,0,0],0.6);
-const lampObj=add(sphere(0.2,12,8),[3,2.9,0],[0,0,0],1,{emit:1});
+const deckLamp=lantern([3,3.3,0],0.4,0,2.3,7);
 
 const sunDir=norm([7,6.5,9]);
 const moon2=norm(sub(sunDir.map(v=>v), cross(sunDir,[0,1,0]).map(v=>v*0.022).map((v,i)=>v-[0,0.012,0][i])));
 const SC=[3,0,0];
 const sunVP=M4.mul(M4.ortho(-19,19,-19,19,5,75), M4.lookAt(SC.map((v,i)=>v+sunDir[i]*40),SC,[0,1,0]));
+
+const DECK=endScene({ name:'deck', sky:1, sunI:1.9, fill:0 });
+DECK.lamps.push(deckLamp);
