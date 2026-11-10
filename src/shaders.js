@@ -16,6 +16,7 @@ in vec3 wP; in vec3 wN; in vec3 vN; in vec4 sP; in vec2 vU; flat in vec4 vA; // 
 uniform sampler2DShadow uShadow; uniform samplerCubeShadow uCube0, uCube1, uCube2;
 uniform vec3 uSunDir, uEye; uniform vec3 uLamp[3]; uniform vec2 uLampP[3]; uniform vec4 uLampD[3]; // lamp position; (intensity, range); spot (direction, cos of half-angle; -2 = shines all round)
 uniform float uPix, uD, uT, uSky, uSunI, uFill, uFoam, uFoamR, uEdge; uniform vec2 uCubeNF; // cube shadow near, far
+uniform sampler2D uTex; uniform vec2 uTone; // a model's base-colour texture; (1 / its mean luminance, contrast)
 #define CN uCubeNF.x
 #define CF uCubeNF.y
 float cubeSh(samplerCubeShadow c, vec3 v, float bias){ vec3 a=abs(v); float m=max(max(a.x,max(a.y,a.z))-bias,CN);
@@ -39,6 +40,8 @@ float hullDist(vec2 p){
   vec2 q=abs(p)-vec2(12.0,7.0); float box=length(max(q,0.0))+min(max(q.x,q.y),0.0);
   float bow=max((abs(p.y)-7.0*(18.0-p.x)/6.0)*0.651, 12.0-p.x);
   return min(box,bow); }
+// The same for the anchored Dutch ship: a lens about 16 m long and 5 m across.
+float shipDist(vec2 p){ float t=(p.x+0.4)/8.4; return max(abs(p.y)-2.5*(1.0-t*t*t*t), abs(p.x+0.4)-8.4)*0.8; }
 // Surface-stable fractal dots: a self-similar Bayer point set stuck to the surface.
 // As the surface recedes, dots drop out in Bayer order so on-screen density stays constant.
 float surf(vec2 uv, float lum, float sigma){
@@ -57,7 +60,9 @@ float surf(vec2 uv, float lum, float sigma){
   return darkDots ? 1.0-hit : hit;
 }
 void main(){
-  vec3 n=normalize(wN); vec3 Vd=uEye-wP; float dist=length(Vd); Vd/=dist;
+  float texL=dot(texture(uTex,vU).rgb,vec3(0.299,0.587,0.114)); // sampled outside any branch (derivatives)
+  bool model=vA.w>1.5; // kind 2: an imported mesh
+  vec3 n=normalize(wN), an=abs(n); vec3 Vd=uEye-wP; float dist=length(Vd); Vd/=dist;
   vec3 vn=normalize(vN);
   if(dot(n,Vd)<0.0){ n=-n; vn=-vn; } // thin two-sided things (hammocks, shells) light the side you see
   float lum;
@@ -66,21 +71,23 @@ void main(){
   if(s.x>0.0&&s.x<1.0&&s.y>0.0&&s.y<1.0&&s.z<1.0){ sh=0.0; vec2 ts=vec2(1.0/2048.0); float bias=0.0006+0.002*(1.0-ndl);
     for(int x=-1;x<=1;x++) for(int y=-1;y<=1;y++) sh+=texture(uShadow, vec3(s.xy+vec2(x,y)*ts, s.z-bias));
     sh/=9.0; }
-  if(vA.w>0.5){
+  if(vA.w>0.5&&!model){
     vec3 wn=normalize(vec3(0.22*sin(wP.x*0.9+uT*1.1)+0.18*sin(wP.z*1.7-uT*0.8+wP.x*0.3), 1.0, 0.22*sin(wP.z*1.1+uT*0.9)+0.18*sin(wP.x*2.1+uT*1.3)));
     float spec=pow(max(dot(reflect(-Vd,wn),uSunDir),0.0),50.0);
     float fog=exp(-dist/60.0);
     // swell: broken bands of light travelling across the water, plus foam along the hull
     float ph=dot(wP.xz,vec2(0.17,0.52))+2.2*vnoise(wP.xz*0.09)-uT*0.55;
     float crest=smoothstep(0.72,1.0,sin(ph))*smoothstep(0.42,0.68,vnoise(wP.xz*vec2(0.16,0.4)+vec2(uT*0.06,0.0)));
-    float shore = uFoam<0.5 ? 9.0 : uFoam<1.5 ? hullDist(wP.xz) : length(wP.xz)-uFoamR; // 1: the ship's hull, 2: a round island
+    float shore = uFoam<0.5 ? 9.0 : uFoam<1.5 ? hullDist(wP.xz) : uFoam<2.5 ? length(wP.xz)-uFoamR : shipDist(wP.xz); // 1: the deck's hull, 2: a round island, 3: the anchored ship
     float foam=smoothstep(1.3,0.15,shore+0.9*vnoise(wP.xz*1.3+uT*0.25));
     vec3 up=vec3(0.0,1.0,0.0);
     lum=(0.42*crest*(0.4+0.6*sh)+1.3*spec*sh)*fog+0.75*foam+0.8*(lampLight(0,up)+lampLight(1,up)+lampLight(2,up));
   } else {
     float lamp=lampLight(0,n)+lampLight(1,n)+lampLight(2,n);
     float sky=(0.05+0.05*n.y)*uSky;
-    lum=vA.y*(sky+uSunI*ndl*sh+lamp);
+    float shade=vA.y;
+    if(model) shade*=clamp(pow(texL*uTone.x,uTone.y),0.3,1.7); // texture as tone: planking and grain become denser or sparser dots
+    lum=shade*(sky+uSunI*ndl*sh+lamp);
     if(uEdge>0.0) lum*=smoothstep(uEdge+22.0,uEdge,length(wP.xz)); // the world fades to black past the scene's edge
     lum=clamp(lum,0.0,1.0);
     lum=smoothstep(0.0,1.0,clamp((lum-0.03)/0.9,0.0,1.0));
@@ -88,8 +95,12 @@ void main(){
   lum=mix(lum,1.0,vA.z);
   float cs=abs(dot(n,Vd));
   float sigma=dist*uPix/sqrt(max(cs,0.1));
-  float bit=surf(vU,lum,sigma);
-  oLit=vec4(bit,lum,0.0,1.0);
+  // Models have scan-atlas UVs that would tear the lattice: project position along the normal's dominant axis instead (metres).
+  vec2 uv = !model ? vU : an.x>=an.y&&an.x>=an.z ? wP.zy : an.y>=an.z ? wP.xz : wP.xy;
+  float bit=surf(uv,lum,sigma);
+  // view depth, log-encoded in 16 bits, for the post pass's depth outlines
+  float e=clamp(log2(1.0+1.0/gl_FragCoord.w)/9.25,0.0,1.0)*65535.0;
+  oLit=vec4(bit,lum,floor(e/256.0)/255.0,mod(floor(e),256.0)/255.0);
   oEdge=vec4(vn.xy*0.5+0.5, floor(vA.x/256.0)/255.0, mod(vA.x,256.0)/255.0); // view normal xy + 16-bit object id
 }`;
 
@@ -107,10 +118,13 @@ precision highp float; precision highp int;
 uniform sampler2D tLit, tEdge;
 uniform vec2 res; uniform float tanHalf, aspect, mode, edges, raw, day;
 uniform mat3 camRot; uniform vec3 dark, light, uMoon, uMoon2;
+#define MODEL_CREASE 0.2
+#define MODEL_DEPTH 0.03
 in vec2 vUv; out vec4 o;
 ${RANK}
 float hash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
 vec3 nrm(vec4 c){ vec2 n=c.rg*2.0-1.0; return vec3(n,sqrt(max(0.0,1.0-dot(n,n)))); }
+float invZ(vec4 l){ return 1.0/(exp2((l.b*65280.0+l.a*255.0)/65535.0*9.25)-1.0+1e-4); } // 1 / view depth: linear across the screen on any plane
 void main(){
   vec4 L=texture(tLit,vUv), c=texture(tEdge,vUv);
   float lum=L.g, bit;
@@ -141,8 +155,15 @@ void main(){
     vec4 r=texture(tEdge,vUv+vec2(px.x,0.0)), u=texture(tEdge,vUv+vec2(0.0,px.y));
     bool e=abs(c.a-r.a)+abs(c.b-r.b)>0.002 || abs(c.a-u.a)+abs(c.b-u.b)>0.002;
     bool rb=r.b==0.0&&r.a==0.0, ub=u.b==0.0&&u.a==0.0;
-    if(!bg && !rb && dot(nrm(c),nrm(r))<0.75) e=true;
-    if(!bg && !ub && dot(nrm(c),nrm(u))<0.75) e=true;
+    // Imported meshes (ids from 32768) are too detailed for the normal rule: it only catches sharp creases there, and
+    // depth steps do the rest. 1/z is linear on a plane, so its second difference is zero however steep the surface;
+    // taking only the negative side puts the line on the nearer surface, one pixel wide.
+    bool mdl=c.b>=0.5; float crease = mdl ? MODEL_CREASE : 0.75;
+    if(!bg && !rb && dot(nrm(c),nrm(r))<crease) e=true;
+    if(!bg && !ub && dot(nrm(c),nrm(u))<crease) e=true;
+    if(mdl && !e){ float zc=invZ(L), zr=invZ(texture(tLit,vUv+vec2(px.x,0.0))), zl=invZ(texture(tLit,vUv-vec2(px.x,0.0))),
+      zu=invZ(texture(tLit,vUv+vec2(0.0,px.y))), zd=invZ(texture(tLit,vUv-vec2(0.0,px.y)));
+      if(min(zl+zr,zu+zd)-2.0*zc < -MODEL_DEPTH*zc) e=true; }
     if(e){ float l2=max(lum, max(texture(tLit,vUv+vec2(px.x,0.0)).g, texture(tLit,vUv+vec2(0.0,px.y)).g)); bit = l2>0.5 ? 0.0 : 1.0; }
   }
   o=vec4(mix(dark,light,bit),1.0);

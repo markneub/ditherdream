@@ -1,24 +1,26 @@
 # ditherdream
 
-A 1-bit, Obra Dinn-inspired renderer experiment in plain WebGL2: seven small scenes (a ship's deck and
-hold, a lighthouse, a forest, a cathedral, a night train, desert ruins), dithered with dots that stick to surfaces. No build step, no runtime dependencies.
+A 1-bit, Obra Dinn-inspired renderer experiment in plain WebGL2: eight small scenes (a ship's deck and
+hold, a real ship model at anchor, a lighthouse, a forest, a cathedral, a night train, desert ruins), dithered with dots that stick to surfaces. No build step, no runtime dependencies.
+Seven scenes are boxes and cylinders generated in code; `anchor` is a Poly Haven model loaded from `assets/`.
 
 ## Run and check
 
-- Open `index.html` in a browser (works from `file://`; scripts are classic, not modules).
+- Open `index.html` in a browser (works from `file://`; scripts are classic, not modules). The `anchor` scene fetches
+  its model, so it needs a web server (`python3 -m http.server`); from `file://` it says so and the other scenes still work.
 - `npm install && npm run shots` renders fixed views of every scene at phone size into `shots/`
-  (gitignored), runs the walk tests, and exits non-zero on any page or shader error. `npm run shots -- forest`
+  (gitignored; it serves the folder over http itself), runs the walk tests, and exits non-zero on any page or shader error. `npm run shots -- forest`
   renders only views whose name starts with `forest`; `npm run shots -- tests` runs only the walk tests.
   Set `CHROME_PATH` to use an installed Chrome. **Look at the PNGs after every visual change.**
-  (SwiftShader takes ~4 minutes for the full run.)
+  (SwiftShader takes ~5 minutes for the full run.)
 - `window.__dbg`: `S` (dev switches), `scenes` (by name), `setScene(sc)`, `setView('orbit'|'walk')`,
   `cam(theta, phi, radius)`, `player`, `walk(x, z, yaw, pitch, sceneName, y)`.
 - Walk tests (simulated, `player.update(1/60)` in a loop): the deck's steps/rails/edges, hatch down and
-  ladder up, the lighthouse door → spiral stair → lamp room → gallery, and every scene's spawn + 20 s straight ahead.
+  ladder up, the anchored ship's two ladders and bulwark, the lighthouse door → spiral stair → lamp room → gallery, and every scene's spawn + 20 s straight ahead.
 
 ## Deploy
 
-- `.github/workflows/pages.yml` runs on every push and publishes `index.html` + `src/` **only from the
+- `.github/workflows/pages.yml` runs on every push and publishes `index.html` + `src/` + `assets/` **only from the
   default branch** (`main`). Live at https://markneub.github.io/ditherdream/
 - Pages source must be "GitHub Actions" (repo Settings → Pages). New top-level files the page needs
   must be added to the `cp` line in the workflow.
@@ -33,7 +35,9 @@ Files load in this order and share the global scope (top-level `const`s are visi
 | `src/geometry.js` | Matrix helpers; shape builders (pos3, normal3, uv2): `box wedge cyl flatcyl sphere sector vault mound sling rock`; `rng(seed)` |
 | `src/shaders.js` | All GLSL: `SCENE_*` (lighting + surface dots), `SHADOW_*`, `POST_*` (sky, edges, palette) |
 | `src/renderer.js` | GL setup, programs, shadow map, MRT framebuffer, `resize()` |
-| `src/scene.js` | Scene builder (`beginScene`/`add`/`B`/`lantern`/`endScene`), `WALK` + `walkBlocked`, and `DECK` |
+| `src/scene.js` | Scene builder (`beginScene`/`add`/`B`/`lantern`/`endScene`), `modelObject` + `heightField` for imported meshes, `WALK` + `walkBlocked`, and `DECK` |
+| `src/gltf.js` | `loadGLTF(url)`: meshes with node transforms applied, and each one's base-colour image URL |
+| `src/anchor.js` | The model scene: loads the ship on first open, builds its height map, ladders |
 | `src/hold.js` `lighthouse.js` `forest.js` `cathedral.js` `train.js` `ruins.js` | One scene each: geometry, lamps, `update(T)`, `floorAt`, `spawn` |
 | `src/walk.js` | First-person `player`, the deck's and hold's floors and the hatch/ladder between them, `scene` (the current one), touch and desktop controls |
 | `src/main.js` | `SCENES`, the scene switcher, orbit input, `setScene`/`setView`, the frame loop (shadow passes, scene pass, post pass) |
@@ -43,7 +47,7 @@ Files load in this order and share the global scope (top-level `const`s are visi
 1. **Shadow passes**: depth from the moon into a 2048 px shadow map, then a 512 px depth **cube map per
    lantern** (up to 3, six faces each, every frame, since the lanterns swing; `cubeSh` in `SCENE_FS`
    with a world-space bias). Static geometry is one baked buffer per scene, so each pass is one draw.
-2. **Scene pass** into two targets: `lit` = (surface-dot bit, luminance) and `edge` = (view normal xy, 16-bit object id).
+2. **Scene pass** into two targets: `lit` = (surface-dot bit, luminance, 16-bit log view depth) and `edge` = (view normal xy, 16-bit object id).
 3. **Post pass**: picks the surface bit or screen-space Bayer, draws the sky where id = 0 (night: stars + moon;
    `day` scenes: white with the sun as a thin ring),
    then 1 px outlines where id or normal changes between neighbouring pixels, then maps to the 2-colour palette.
@@ -74,6 +78,7 @@ in it with a Walk/Orbit button; the rest are walked.
 | Scene | What it's for | Notes |
 | --- | --- | --- |
 | `deck` | the original | moonlit, one lantern; the open hatch leads to `hold` |
+| `anchor` | a real model, to compare with `deck` | see "The model scene" below |
 | `hold` | lantern light, hard swinging shadows | moonlight only through the hatch grating; the ladder leads up |
 | `lighthouse` | a moving light, a climb | spot lamp turning in the lamp room (lights the sea via the sea shader); 3.5-turn spiral stair: `floorAt` returns the highest floor within a step's reach of your height (several floors overlap); gallery door is opposite the stair well |
 | `forest` | many thin overlapping shapes | 85 conifers (seeded), campfire lamp with jitter + flicker, dappled moonlight |
@@ -141,34 +146,31 @@ After Rune Skovbo Johansen's "surface-stable fractal dithering", done procedural
 - The hold's floor is mid-tone dots nearly everywhere a lamp reaches: busy. Fewer, brighter pools might read better.
 - Looking up through the hatch from the hold shows sky only (the deck's mast and rigging aren't in that scene).
 
-## Next: a scene built from real models (the user's request)
+## The model scene (`anchor`)
 
-The user finds the scenes' art "too rudimentary" (everything is boxes and cylinders generated in code) and
-wants **a higher-quality scene with actual models, e.g. from Poly Haven** (CC0). Agreed first target: Poly Haven's
-*Dutch Ship Medium* at anchor at night, as a new scene alongside `deck`, so the two can be compared like for like
-(barrels/crates from Poly Haven as dressing). The user's pacnw repo already uses that ship; its
-`blender/build_coast.py` and `tools/fetch_textures.py` show how it fetched and trimmed Poly Haven assets.
+The user found the code-built scenes "too rudimentary" and asked for a scene from real models. `anchor` is Poly Haven's
+*Dutch Ship Medium* (CC0; ~69k triangles in three meshes: hull, rigging, sails) at anchor at night, next to `deck` in the
+list so the two can be compared. Poly Haven (`api.polyhaven.com`, `dl.polyhaven.org`) was reachable from the cloud session
+that built this; see `assets/README.md`.
 
-- **Getting the files:** needs `api.polyhaven.com` and `dl.polyhaven.org` reachable. The session that wrote this
-  was refused by the network allowlist (403 from the proxy). **Try a request first**; if it is still blocked, say
-  so and ask the user to attach the glTF files (1k or 2k textures) rather than looking for another route.
-  Commit the assets under `assets/` and add that folder to the `cp` line in `.github/workflows/pages.yml`.
-- **Loading:** a small glTF reader (meshes, node transforms, base-colour texture) in the page. `fetch` doesn't
-  work from `file://`, so the shots script must serve the folder (e.g. `python3 -m http.server`) instead of opening
-  `index.html` directly; update "Run and check" when that changes. Decimate if a model is heavy: each lamp
-  re-renders the scene six times a frame.
-- **Dots without clean UVs:** scan UV atlases would tear the dot lattice. Compute the lattice coordinates in the
-  fragment shader by projecting object-space position along the dominant axis of the normal (triplanar, hard
-  switch), in metres, and feed that to `surf()` in place of `vU`. `sigma` is already analytic, so it needs no UVs.
-- **Texture as tone:** multiply `vA.y` (shade) by the base-colour texture's luminance (boost its contrast), so
-  planking and grain come through as denser or sparser dots.
-- **Outlines:** the normal-difference rule will scribble over a detailed mesh. For model objects use depth
-  discontinuities + object ids only (write linear depth into the lit target's spare channel), and consider a
-  crease-angle threshold far higher than 0.75. This is the real risk: judge it from shots before building further.
-- Keep colliders/`floorAt` simple (hand-placed boxes over the deck) until the look is proven.
+- **Loading:** `ANCHOR.load()` (called by `setScene` the first time, memoised) fetches the glTF, makes one `sc.dyn` object
+  per mesh (`modelObject`, kind 2, with `tex` + `contrast`) and builds the height map. Until then the scene is sea and a lantern.
+- **Dots:** kind 2 ignores the scan-atlas UVs for the lattice and uses world position projected along the dominant axis
+  of the normal (hard switch, metres). The model never moves, so world = object; a moving model would need its object position.
+- **Tone:** shade is multiplied by `(texture luminance / the texture's mean) ^ contrast`, clamped to 0.3..1.7 (`uTone`).
+- **Outlines:** every connected piece of a mesh gets its own id (welded by position, union-find), from 32768 up; ids in that
+  range mark model pixels in the post pass. There the normal rule only fires on sharp creases (`MODEL_CREASE`), and depth
+  steps are found from the second difference of 1/z (zero on any plane; negative side only, so the line is 1 px on the nearer
+  surface; `MODEL_DEPTH` is the relative step). This was the feared risk and it reads well in shots, near and far.
+- **Walking:** `heightField` rasterises the hull (below y 4.7) and rigging (below 3.7) into 10 cm cells, highest surface
+  wins; `floorAt` takes the highest of five samples a body-radius apart, so rails, masts, the boat and the capstan block
+  with no hand-listed colliders. The two ladders are hand-placed ramps (`ANCHOR_LADDERS`). The poop deck is not reachable.
+- **Not done / first guesses:** no barrels or crates added as dressing (the model has its own deck furniture); the ship does
+  not sway; no way below; shade/contrast per mesh (`ANCHOR_LOOK`), the lantern's spot on the mainmast and `shipDist` (foam
+  outline) were set from headless stills only. Not yet tried on a phone: each lamp redraws the model six times a frame.
 
 ## Ideas not yet tried
 
 A visible lighthouse beam (a dotted cone?). Hatching or line patterns instead of dots; per-material patterns (Obra Dinn mixes Bayer and
-blue noise); importing a glTF model; dot anti-shimmer by
+blue noise); more models (dressing, a second scene); dot anti-shimmer by
 snapping dot centres to pixel centres.

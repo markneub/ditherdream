@@ -18,8 +18,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      # No build step: the site is index.html plus src/.
-      - run: mkdir _site && cp -r index.html src _site/
+      # No build step: the site is index.html plus src/ and the model files in assets/.
+      - run: mkdir _site && cp -r index.html src assets _site/
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site

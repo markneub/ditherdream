@@ -25,6 +25,36 @@ function endScene(props){
   // the crescent's bite, offset from the moon's direction
   sc.moon2=norm(sub(sc.sunDir, cross(sc.sunDir,[0,1,0]).map(v=>v*0.022).map((v,i)=>v-[0,0.012,0][i])));
   _items=null; return sc; }
+// ---------- imported meshes ----------
+// Turns one glTF mesh into a drawable for sc.dyn (kind 2: lattice from position, tone from its texture). Every
+// connected piece of the mesh (a rope, a block, a plank) gets its own id from idBase, so outlines separate the parts
+// of a "joined" model the way they separate add() calls. Ids from 32768 mark model pixels for the post pass.
+function modelObject(mesh,idBase,shade){
+  const {pos,nrm,uv,idx}=mesh, nv=pos.length/3, weld=new Map(), par=new Int32Array(nv), w=new Int32Array(nv);
+  for(let i=0;i<nv;i++){ par[i]=i;                                                    // weld vertices split by UV seams
+    const k=Math.round(pos[i*3]*2e3)+','+Math.round(pos[i*3+1]*2e3)+','+Math.round(pos[i*3+2]*2e3); let j=weld.get(k); if(j===undefined) weld.set(k,j=i); w[i]=j; }
+  const find=x=>{ while(par[x]!==x){ par[x]=par[par[x]]; x=par[x]; } return x; };
+  for(let t=0;t<idx.length;t+=3){ const a=find(w[idx[t]]); par[find(w[idx[t+1]])]=a; par[find(w[idx[t+2]])]=a; }
+  const ids=new Map(), d=new Float32Array(idx.length*12);
+  for(let t=0;t<idx.length;t++){ const i=idx[t], r=find(w[i]); let id=ids.get(r); if(id===undefined) ids.set(r,id=idBase+ids.size);
+    d.set([pos[i*3],pos[i*3+1],pos[i*3+2],nrm[i*3],nrm[i*3+1],nrm[i*3+2],uv[i*2],uv[i*2+1],id,shade,0,2],t*12); }
+  if(idBase+ids.size>65535) fail('Too many pieces in one model');
+  return {g:vao(d),pos:[0,0,0],rot:[0,0,0],count:ids.size}; }
+// A height map for walking on a model: the highest surface under `ymax` in each cell (so decks are floors, and rails,
+// masts and anything else more than a step high are walls). parts: [[mesh, ymax], ...]. at(x, z) is null off the map.
+function heightField(parts,x0,x1,z0,z1,cell){
+  const W=Math.ceil((x1-x0)/cell), H=Math.ceil((z1-z0)/cell), h=new Float32Array(W*H).fill(-99);
+  for(const [m,ymax] of parts){ const p=m.pos, ix=m.idx;
+    for(let t=0;t<ix.length;t+=3){ const a=ix[t]*3,b=ix[t+1]*3,c=ix[t+2]*3;
+      if(Math.min(p[a+1],p[b+1],p[c+1])>ymax) continue;
+      // sample the triangle on a barycentric grid finer than the cells (this also catches vertical faces)
+      const L=Math.max(Math.hypot(p[a]-p[b],p[a+1]-p[b+1],p[a+2]-p[b+2]),Math.hypot(p[a]-p[c],p[a+1]-p[c+1],p[a+2]-p[c+2]),Math.hypot(p[b]-p[c],p[b+1]-p[c+1],p[b+2]-p[c+2]));
+      const n=Math.ceil(L/(cell*0.45))+1;
+      for(let i=0;i<=n;i++) for(let j=0;j<=n-i;j++){ const u=i/n,v=j/n,q=1-u-v, y=u*p[a+1]+v*p[b+1]+q*p[c+1]; if(y>ymax) continue;
+        const cx=Math.floor((u*p[a]+v*p[b]+q*p[c]-x0)/cell), cz=Math.floor((u*p[a+2]+v*p[b+2]+q*p[c+2]-z0)/cell);
+        if(cx>=0&&cz>=0&&cx<W&&cz<H&&y>h[cz*W+cx]) h[cz*W+cx]=y; } } }
+  return {W,H,h,at(x,z){ const cx=Math.floor((x-x0)/cell), cz=Math.floor((z-z0)/cell); if(cx<0||cz<0||cx>=W||cz>=H) return null; const y=h[cz*W+cx]; return y<-90?null:y; }}; }
+
 // Walking: sizes, and the collider test every scene's floorAt uses. Circles: [x, z, r]; rects: [x, z, halfX, halfZ].
 const WALK = { speed: 2.4, run: 5, eye: 1.7, radius: 0.3, stepUp: 0.45, drop: 0.6 };
 function walkBlocked(x, z, circles, rects) {
