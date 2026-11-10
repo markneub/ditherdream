@@ -1,17 +1,20 @@
 # ditherdream
 
-A 1-bit, Obra Dinn-inspired renderer experiment: a small moonlit ship in plain WebGL2 (its deck,
-and the hold below it), dithered with dots that stick to surfaces. No build step, no runtime dependencies.
+A 1-bit, Obra Dinn-inspired renderer experiment in plain WebGL2: seven small scenes (a ship's deck and
+hold, a lighthouse, a forest, a cathedral, a night train, desert ruins), dithered with dots that stick to surfaces. No build step, no runtime dependencies.
 
 ## Run and check
 
 - Open `index.html` in a browser (works from `file://`; scripts are classic, not modules).
-- `npm install && npm run shots` renders fixed camera angles at phone size into `shots/`
-  (gitignored) and exits non-zero on any page or shader error. Set `CHROME_PATH` to use an
-  installed Chrome instead of Playwright's download. Look at the PNGs after every visual change.
-- `window.__dbg` exposes `S` (dev switches), `cam(theta, phi, radius)`, `setView(v)`, `player` and
-  `walk(x, z, yaw, pitch)` for scripted views. The shots script also runs a simulated walk test
-  (`player.update(1/60)` in a loop: up the steps, into the rail, to the bow, off the quarterdeck edge).
+- `npm install && npm run shots` renders fixed views of every scene at phone size into `shots/`
+  (gitignored), runs the walk tests, and exits non-zero on any page or shader error. `npm run shots -- forest`
+  renders only views whose name starts with `forest`; `npm run shots -- tests` runs only the walk tests.
+  Set `CHROME_PATH` to use an installed Chrome. **Look at the PNGs after every visual change.**
+  (SwiftShader takes ~4 minutes for the full run.)
+- `window.__dbg`: `S` (dev switches), `scenes` (by name), `setScene(sc)`, `setView('orbit'|'walk')`,
+  `cam(theta, phi, radius)`, `player`, `walk(x, z, yaw, pitch, sceneName, y)`.
+- Walk tests (simulated, `player.update(1/60)` in a loop): the deck's steps/rails/edges, hatch down and
+  ladder up, the lighthouse door → spiral stair → lamp room → gallery, and every scene's spawn + 20 s straight ahead.
 
 ## Deploy
 
@@ -27,46 +30,63 @@ Files load in this order and share the global scope (top-level `const`s are visi
 | File | What it holds |
 | --- | --- |
 | `src/state.js` | Fixed look (`PIXEL`, `DOT_SPACING`, `DARK`/`LIGHT`) and dev switches `S` |
-| `src/geometry.js` | Matrix helpers; box / wedge / cylinder / sphere builders (pos3, normal3, uv2) |
+| `src/geometry.js` | Matrix helpers; shape builders (pos3, normal3, uv2): `box wedge cyl flatcyl sphere sector vault mound sling rock`; `rng(seed)` |
 | `src/shaders.js` | All GLSL: `SCENE_*` (lighting + surface dots), `SHADOW_*`, `POST_*` (sky, edges, palette) |
 | `src/renderer.js` | GL setup, programs, shadow map, MRT framebuffer, `resize()` |
-| `src/scene.js` | Scene builder (`beginScene`/`add`/`lantern`/`endScene`) and `DECK`; every object is one `add(geometry, pos, rot, shade, opts)` |
-| `src/hold.js` | `HOLD`: below decks (same ship coordinates; floor at `FY`) |
-| `src/walk.js` | First-person `player`, each scene's `floorAt`/colliders/`exit`/`spawn`, `scene` (the current one), touch and desktop controls |
-| `src/main.js` | Orbit input, `setView('orbit' or 'walk')`, the frame loop (shadow pass, scene pass, post pass) |
+| `src/scene.js` | Scene builder (`beginScene`/`add`/`B`/`lantern`/`endScene`), `WALK` + `walkBlocked`, and `DECK` |
+| `src/hold.js` `lighthouse.js` `forest.js` `cathedral.js` `train.js` `ruins.js` | One scene each: geometry, lamps, `update(T)`, `floorAt`, `spawn` |
+| `src/walk.js` | First-person `player`, the deck's and hold's floors and the hatch/ladder between them, `scene` (the current one), touch and desktop controls |
+| `src/main.js` | `SCENES`, the scene switcher, orbit input, `setScene`/`setView`, the frame loop (shadow passes, scene pass, post pass) |
 
 ## How the frame is built
 
 1. **Shadow passes**: depth from the moon into a 2048 px shadow map, then a 512 px depth **cube map per
    lantern** (up to 3, six faces each, every frame, since the lanterns swing; `cubeSh` in `SCENE_FS`
    with a world-space bias). Static geometry is one baked buffer per scene, so each pass is one draw.
-2. **Scene pass** into two targets: `lit` = (surface-dot bit, luminance) and `edge` = (view normal, object id).
-3. **Post pass**: picks the surface bit or screen-space Bayer, draws sky/stars/moon where id = 0,
+2. **Scene pass** into two targets: `lit` = (surface-dot bit, luminance) and `edge` = (view normal xy, 16-bit object id).
+3. **Post pass**: picks the surface bit or screen-space Bayer, draws the sky where id = 0 (night: stars + moon;
+   `day` scenes: white with the sun as a thin ring),
    then 1 px outlines where id or normal changes between neighbouring pixels, then maps to the 2-colour palette.
 
 Canvas resolution is device pixels divided by a whole number (`PIXEL`), so every scene pixel is an
 exact block of screen pixels.
 
-**The look is fixed, with no on-screen options** (the user's pick): fine surface dots, 2 device
+**The look is fixed, with no on-screen options for it** (the user's pick; the only buttons are Scenes and Walk/Orbit): fine surface dots, 2 device
 pixels per scene pixel on a phone, outlines on, pure black and white. `S.mode = 1` (screen-space
 Bayer), `S.raw`, `S.edges` and `S.spin` remain as dev switches via `window.__dbg.S`.
 
 ## Scenes
 
-- A scene is `{statics, dyn, lamps, sky, sunI, fill, floorAt, exit, spawn}`. Per-object data (id, shade,
-  emissive, kind) rides in a 4th vertex attribute (`aA` → `vA`), not uniforms. **At most 254 objects per
-  scene** (ids are 8-bit in the edge buffer; `endScene` fails loudly). Add a `<script>` tag for a new scene file.
-- `DECK`: moonlit, one lantern, orbit or walk. `HOLD`: walk only; three lanterns with hard swinging
-  shadows, moonlight only through the hatch and its grating, `fill` (a little unshadowed light near
-  each lamp, standing in for bounce) so surfaces by a lamp aren't pure black.
-- Moving between them: `scene.exit(player)` returns `{scene, x, z, yaw}`. On deck, stepping into the open
-  aft part of the hatch goes below; in the hold, walking into the ladder goes up. Arrivals sit outside
-  both trigger zones. `setScene()` cuts with a short fade. `?scene=hold` starts below decks.
-- Shots: `__dbg.walk(x, z, yaw, pitch, 'hold')`; the walk test also goes down the hatch and up the ladder.
+The "Scenes" button (top left) lists them; `?scene=<name>` starts in one. Scenes with an `orbit` view open
+in it with a Walk/Orbit button; the rest are walked.
+
+- A scene is built between `beginScene()` and `endScene(props)`. Props (defaults in `endScene`): `name`,
+  `title`, `sunDir`/`sunAt`/`sunHalf` (the sun or moon and its shadow box), `sunI`, `sky` (ambient), `fill`
+  (unshadowed light near each lamp, standing in for bounce), `day`, `foam` (1 ship hull, 2 round island
+  of radius `foamR`), `edge` (ground fades to black beyond this radius), `cubeFar`, `orbit`, `spawn`, `tip`.
+  Then `lamps` (max 3), `update(T, dt)`, `floorAt(x, z, y)`, optional `exit(player)`.
+- Per-object data (id, shade, emissive, kind) rides in a 4th vertex attribute (`aA` → `vA`). Ids are 16-bit.
+  Static objects are baked into one buffer; `dyn`/emissive/sea objects keep their own and can move
+  (`noShadow`, `noLampShadow` skip the shadow passes).
+- Lamps: `{pos, intensity, range, flicker, phase, obj}`; `pivot`+`len` makes it swing (`lantern()`);
+  `dir`+`cone` (cos of the half-angle) makes it a spot. Each casts cube-map shadows.
+
+| Scene | What it's for | Notes |
+| --- | --- | --- |
+| `deck` | the original | moonlit, one lantern; the open hatch leads to `hold` |
+| `hold` | lantern light, hard swinging shadows | moonlight only through the hatch grating; the ladder leads up |
+| `lighthouse` | a moving light, a climb | spot lamp turning in the lamp room (lights the sea via the sea shader); 3.5-turn spiral stair: `floorAt` returns the highest floor within a step's reach of your height (several floors overlap); gallery door is opposite the stair well |
+| `forest` | many thin overlapping shapes | 85 conifers (seeded), campfire lamp with jitter + flicker, dappled moonlight |
+| `cathedral` | big gradients, shafts of light | `day`; sun in bars through the south windows; barrel vault (`vault`), swinging chandelier, two altar candles |
+| `train` | light sliding past | everything outside moves (`update`): ground (wraps every 64 m so the dots repeat exactly), poles, trees, two trackside lamps whose light sweeps through the windows |
+| `ruins` | mostly white | `day`, high sun, small hard shadows; dunes and pyramids have a lower shade so their far sides dot |
+
+- `deck` ↔ `hold`: `scene.exit(player)` returns `{scene, x, z, yaw}`; arrivals sit outside both trigger zones.
+- Colliders are hand-listed or collected while building (`FO.trees`, `RU.circles`, ...): keep them in step with the geometry.
 
 ## Walking (`src/walk.js`)
 
-The one button on screen switches between orbiting the deck and walking (the user asked for a
+The Walk/Orbit button switches view where a scene has both (the user asked for a
 first-person scene with **the same walk controls as their pacnw project**; this is a port of its
 `touch.js`/`player.js`, keep the two in step):
 
@@ -77,7 +97,7 @@ first-person scene with **the same walk controls as their pacnw project**; this 
   walking is also a free look.
 - **Desktop:** click captures the mouse (a held drag looks if pointer lock is refused), WASD/arrows, Shift runs.
 - Yaw 0 faces -z, positive yaw turns left. Speeds are scaled to the deck (2.4 m/s walk, 5 run; pacnw uses 5/13).
-- `floorAt(x, z)` is the walkable height or `null` (overboard or inside a collider). A move is allowed
+- `floorAt(x, z, y)` is the walkable height or `null` (overboard or inside a collider); `y` is your current height, for places with floors above each other. A move is allowed
   if the floor there is at most 0.45 m up or 0.6 m down from here, which gives steps, the hatch,
   and the quarterdeck edge with one rule. Colliders are hand-listed to match `scene.js`: **update
   both when moving objects**.
@@ -114,12 +134,15 @@ After Rune Skovbo Johansen's "surface-stable fractal dithering", done procedural
 - Spheres and the bow wedge use per-triangle planar UVs, so the pattern has seams there.
 - Sea: black with broken swell bands, foam along the hull (`hullDist`) and moon glitter; star cells can twinkle.
 - Outlines are 1 px and can clutter on thin distant objects (balusters, cannon wheels).
+- New scenes (lighthouse, forest, cathedral, train, ruins) were built unattended in one pass and only checked in
+  headless stills: lighting levels, speeds and collider fit are first guesses. Not yet tried on a phone; the train
+  (45 moving objects) and forest (85 trees × lamp cube passes) are the likeliest to be slow.
+- The lighthouse beam only shows where it lands (sea, rail, mullions); there is no visible shaft in the air.
 - The hold's floor is mid-tone dots nearly everywhere a lamp reaches: busy. Fewer, brighter pools might read better.
 - Looking up through the hatch from the hold shows sky only (the deck's mast and rigging aren't in that scene).
 
 ## Ideas not yet tried
 
-More scenes (the user liked: lighthouse with a sweeping beam, forest at night, cathedral, train carriage,
-desert ruins at noon). Hatching or line patterns instead of dots; per-material patterns (Obra Dinn mixes Bayer and
+A visible lighthouse beam (a dotted cone?). Hatching or line patterns instead of dots; per-material patterns (Obra Dinn mixes Bayer and
 blue noise); importing a glTF model; dot anti-shimmer by
 snapping dot centres to pixel centres.

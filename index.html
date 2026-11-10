@@ -7,9 +7,14 @@
 <style>
   html,body{margin:0;height:100%;background:#000;overflow:hidden;font:13px/1.2 ui-monospace,Menlo,Consolas,monospace;color:#ddd}
   canvas{position:fixed;left:0;top:0;image-rendering:pixelated;image-rendering:crisp-edges;touch-action:none;display:block}
-  #hint{position:fixed;top:10px;left:0;right:0;text-align:center;pointer-events:none}
+  #hint{position:fixed;top:calc(46px + env(safe-area-inset-top));left:0;right:0;text-align:center;pointer-events:none}
   #hint span{display:inline-block;line-height:1.5;background:rgba(15,15,10,.8);padding:4px 8px;border-radius:5px}
   #mode{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(14px + env(safe-area-inset-bottom));font:inherit;background:rgba(0,0,0,.8);color:#fff;border:1px solid #888;border-radius:6px;padding:8px 14px;cursor:pointer}
+  #scenes{position:fixed;left:10px;top:calc(8px + env(safe-area-inset-top));font:inherit;background:rgba(0,0,0,.8);color:#fff;border:1px solid #888;border-radius:6px;padding:7px 11px;cursor:pointer;z-index:3}
+  #scene-list{position:fixed;left:10px;top:calc(44px + env(safe-area-inset-top));display:none;flex-direction:column;gap:4px;z-index:3}
+  #scene-list.on{display:flex}
+  #scene-list button{font:inherit;text-align:left;background:rgba(0,0,0,.88);color:#fff;border:1px solid #666;border-radius:6px;padding:9px 14px;cursor:pointer}
+  #scene-list button.cur{border-color:#fff;background:#fff;color:#000}
   #look-cue{position:fixed;inset:0;pointer-events:none;background:radial-gradient(ellipse at center,transparent 55%,rgba(0,0,0,.45) 100%);opacity:0;transition:opacity .15s}
   #look-cue.on{opacity:1}
   #fade{position:fixed;inset:0;background:#000;opacity:0;pointer-events:none}
@@ -21,13 +26,20 @@
 <div id="hint"><span>drag to orbit · pinch / scroll to zoom</span></div>
 <div id="err"></div>
 <div id="fade"></div>
-<button id="mode">Walk the deck</button>
+<button id="mode">Walk</button>
+<button id="scenes">Scenes</button>
+<div id="scene-list"></div>
 <script src="src/state.js"></script>
 <script src="src/geometry.js"></script>
 <script src="src/shaders.js"></script>
 <script src="src/renderer.js"></script>
 <script src="src/scene.js"></script>
 <script src="src/hold.js"></script>
+<script src="src/lighthouse.js"></script>
+<script src="src/forest.js"></script>
+<script src="src/cathedral.js"></script>
+<script src="src/train.js"></script>
+<script src="src/ruins.js"></script>
 <script src="src/walk.js"></script>
 <script src="src/main.js"></script>
 </body>

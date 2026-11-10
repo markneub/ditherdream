@@ -7,18 +7,34 @@ const HP=Math.PI/2;
 let _items=null;
 function beginScene(){ _items=[]; }
 function add(geo,pos,rot=[0,0,0],shade=1,o={}){
-  const it={geo,pos,rot,shade,emit:o.emit||0,kind:o.kind||0,dyn:!!o.dyn,id:(_items.length+1)/255};
-  it.noShadow=!!(o.noShadow||it.emit||it.kind); _items.push(it); return it; }
+  const it={geo,pos,rot,shade,emit:o.emit||0,kind:o.kind||0,dyn:!!o.dyn,id:_items.length+1};
+  it.noShadow=!!(o.noShadow||it.emit||it.kind); it.noLampShadow=!!o.noLampShadow; _items.push(it); return it; }
 function packInto(out,it,M){ const g=it.geo;
   for(let i=0;i<g.length;i+=8){ let px=g[i],py=g[i+1],pz=g[i+2],nx=g[i+3],ny=g[i+4],nz=g[i+5];
     if(M){ const x=M[0]*px+M[4]*py+M[8]*pz+M[12], y=M[1]*px+M[5]*py+M[9]*pz+M[13], z=M[2]*px+M[6]*py+M[10]*pz+M[14];
       const a=M[0]*nx+M[4]*ny+M[8]*nz, b=M[1]*nx+M[5]*ny+M[9]*nz, c=M[2]*nx+M[6]*ny+M[10]*nz; px=x;py=y;pz=z;nx=a;ny=b;nz=c; }
     out.push(px,py,pz,nx,ny,nz,g[i+6],g[i+7],it.id,it.shade,it.emit,it.kind); } }
 function endScene(props){
-  if(_items.length>254) fail('Too many objects in one scene: '+_items.length+' (ids are 8-bit)');
+  if(_items.length>65000) fail('Too many objects in one scene: '+_items.length+' (ids are 16-bit)');
   const st=[], dyn=[];
   for(const it of _items){ if(it.dyn||it.noShadow){ const d=[]; packInto(d,it,null); it.g=vao(d); dyn.push(it); } else packInto(st,it,M4.trs(it.pos,it.rot)); it.geo=null; }
-  const sc=Object.assign({statics:vao(st),dyn,lamps:[],count:_items.length},props); _items=null; return sc; }
+  const sc=Object.assign({statics:vao(st),dyn,lamps:[],count:_items.length,
+    sky:1,sunI:1.9,fill:0,day:false,foam:0,foamR:0,edge:0,cubeFar:25,sunDir:norm([7,6.5,9]),sunAt:[3,0,0],sunHalf:19,orbit:null,tip:''},props);
+  sc.sunDir=norm(sc.sunDir);
+  sc.sunVP=M4.mul(M4.ortho(-sc.sunHalf,sc.sunHalf,-sc.sunHalf,sc.sunHalf,5,115), M4.lookAt(sc.sunAt.map((v,i)=>v+sc.sunDir[i]*60),sc.sunAt,[0,1,0]));
+  // the crescent's bite, offset from the moon's direction
+  sc.moon2=norm(sub(sc.sunDir, cross(sc.sunDir,[0,1,0]).map(v=>v*0.022).map((v,i)=>v-[0,0.012,0][i])));
+  _items=null; return sc; }
+// Walking: sizes, and the collider test every scene's floorAt uses. Circles: [x, z, r]; rects: [x, z, halfX, halfZ].
+const WALK = { speed: 2.4, run: 5, eye: 1.7, radius: 0.3, stepUp: 0.45, drop: 0.6 };
+function walkBlocked(x, z, circles, rects) {
+  const r = WALK.radius;
+  for (const c of circles) if (Math.hypot(x - c[0], z - c[1]) < c[2] + r) return true;
+  for (const b of rects) if (Math.abs(x - b[0]) < b[2] + r && Math.abs(z - b[1]) < b[3] + r) return true;
+  return false;
+}
+/** Shorthand for the commonest object: a box of size (w,h,d) centred at (x,y,z), turned ry about the vertical. */
+function B(w,h,d,x,y,z,shade=1,ry=0,o){ return add(box(w,h,d),[x,y,z],[0,ry,0],shade,o); }
 /** A hanging lantern that swings with the ship: a glowing ball on a pivot. */
 function lantern(pivot,len,phase,intensity,range){ return {pivot,len,phase,intensity,range,pos:[pivot[0],pivot[1]-len,pivot[2]],obj:add(sphere(0.11+len*0.2,12,8),[0,0,0],[0,0,0],1,{emit:1,dyn:true})}; }
 
@@ -69,10 +85,7 @@ for(const x of [4.5,8.5]){ add(box(1.0,0.45,1.7),[x,0.42,-5.0],[0,0,0],0.6);
 add(box(0.9,0.08,0.08),[2.6,3.3,0],[0,0,0],0.6);
 const deckLamp=lantern([3,3.3,0],0.4,0,2.3,7);
 
-const sunDir=norm([7,6.5,9]);
-const moon2=norm(sub(sunDir.map(v=>v), cross(sunDir,[0,1,0]).map(v=>v*0.022).map((v,i)=>v-[0,0.012,0][i])));
-const SC=[3,0,0];
-const sunVP=M4.mul(M4.ortho(-19,19,-19,19,5,75), M4.lookAt(SC.map((v,i)=>v+sunDir[i]*40),SC,[0,1,0]));
 
-const DECK=endScene({ name:'deck', sky:1, sunI:1.9, fill:0 });
+const DECK=endScene({ name:'deck', title:'Ship\u2019s deck', foam:1, tip:'the open hatch leads below',
+  orbit:{ target:[1,2.6,0], radius:[27,20], theta:0.2, phi:1.2 } });
 DECK.lamps.push(deckLamp);

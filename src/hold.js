@@ -45,5 +45,5 @@ for(let t=0.1;t<0.95;t+=0.125) add(box(0.06,0.05,0.6),[4.75+t*1.03,FY+t*2.78,0],
 const holdLamps=[lantern([-7,-0.48,-2.2],0.24,0,2.8,11), lantern([1,-0.48,2.6],0.24,2.1,2.7,11), lantern([9,-0.48,-2.4],0.24,4.2,2.6,10)];
 for(const l of holdLamps) add(box(0.05,0.1,0.05),[l.pivot[0],l.pivot[1]+0.03,l.pivot[2]],[0,0,0],0.6);
 
-const HOLD=endScene({ name:'hold', sky:0.3, sunI:1.9, fill:0.1 });
+const HOLD=endScene({ name:'hold', title:'Below decks', sky:0.3, fill:0.1, tip:'the ladder leads back up' });
 HOLD.lamps.push(...holdLamps);

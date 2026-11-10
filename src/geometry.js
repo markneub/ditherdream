@@ -55,3 +55,44 @@ function sling(len,width,sag,nx=12,nz=6){ const g=G();
   for(let i=0;i<nx;i++) for(let j=0;j<nz;j++){ const a=P(i,j),b=P(i+1,j),c=P(i+1,j+1),d=P(i,j+1), na=Nn(i,j),nb=Nn(i+1,j),nc=Nn(i+1,j+1),nd=Nn(i,j+1);
     g.tri(a,b,c,na,nb,nc,U(a),U(b),U(c)); g.tri(a,c,d,na,nc,nd,U(a),U(c),U(d)); }
   return g.v; }
+// Solid annular sector (a slice of a thick ring) around the y axis: radii r0..r1, height h centred on y=0,
+// angles a0..a1. Used for tower walls with a door gap, spiral steps, ring floors.
+function sector(r0,r1,h,a0,a1,segs){ const g=G(), y=h/2, P=(r,a,yy)=>[r*Math.cos(a),yy,r*Math.sin(a)];
+  for(let i=0;i<segs;i++){ const b0=a0+(a1-a0)*i/segs, b1=a0+(a1-a0)*(i+1)/segs, n0=[Math.cos(b0),0,Math.sin(b0)], n1=[Math.cos(b1),0,Math.sin(b1)], m0=n0.map(v=>-v), m1=n1.map(v=>-v);
+    const A=P(r1,b0,-y),B=P(r1,b1,-y),C=P(r1,b1,y),D=P(r1,b0,y), E=P(r0,b0,-y),F=P(r0,b1,-y),H=P(r0,b1,y),I=P(r0,b0,y);
+    const u0=b0*r1,u1=b1*r1,v0=b0*r0,v1=b1*r0;
+    g.tri(A,C,B,n0,n1,n1,[u0,-y],[u1,y],[u1,-y]); g.tri(A,D,C,n0,n0,n1,[u0,-y],[u0,y],[u1,y]);       // outer
+    if(r0>0){ g.tri(E,F,H,m0,m1,m1,[v0,-y],[v1,-y],[v1,y]); g.tri(E,H,I,m0,m1,m0,[v0,-y],[v1,y],[v0,y]); } // inner
+    const up=[0,1,0], dn=[0,-1,0];
+    g.tri(D,H,C,up,up,up); g.tri(D,I,H,up,up,up); g.tri(A,B,F,dn,dn,dn); g.tri(A,F,E,dn,dn,dn); }
+  if(a1-a0<Math.PI*2-1e-6) for(const [a,sg] of [[a0,-1],[a1,1]]){ const n=[-Math.sin(a)*sg,0,Math.cos(a)*sg], A=P(r0,a,-y),B=P(r1,a,-y),C=P(r1,a,y),D=P(r0,a,y), U=(r,yy)=>[r,yy];
+    g.tri(A,B,C,n,n,n,U(r0,-y),U(r1,-y),U(r1,y)); g.tri(A,C,D,n,n,n,U(r0,-y),U(r1,y),U(r0,y)); }
+  return g.v; }
+// Inside of a barrel vault: half a cylinder of radius r along x (length len), normals facing the axis.
+function vault(r,len,segs){ const g=G(), x=len/2;
+  for(let i=0;i<segs;i++){ const a0=Math.PI*i/segs, a1=Math.PI*(i+1)/segs, c0=[0,Math.sin(a0),Math.cos(a0)], c1=[0,Math.sin(a1),Math.cos(a1)], n0=c0.map(v=>-v), n1=c1.map(v=>-v);
+    const A=[-x,r*c0[1],r*c0[2]],B=[x,r*c0[1],r*c0[2]],C=[x,r*c1[1],r*c1[2]],D=[-x,r*c1[1],r*c1[2]];
+    g.tri(A,B,C,n0,n0,n1,[-x,a0*r],[x,a0*r],[x,a1*r]); g.tri(A,C,D,n0,n1,n1,[-x,a0*r],[x,a1*r],[-x,a1*r]); }
+  return g.v; }
+// Spherical cap (a low mound): base radius a, height h, apex at y=0, rim at y=-h.
+function mound(a,h,rings=10,segs=40){ const g=G(), R=(a*a+h*h)/(2*h), am=Math.asin(a/R);
+  const P=(i,j)=>{ const th=am*i/rings, ph=Math.PI*2*j/segs; return [R*Math.sin(th)*Math.cos(ph), R*Math.cos(th)-R, R*Math.sin(th)*Math.sin(ph)]; };
+  const Nn=p=>norm([p[0],p[1]+R,p[2]]), U=p=>[p[0],p[2]];
+  for(let i=0;i<rings;i++) for(let j=0;j<segs;j++){ const A=P(i,j),B=P(i+1,j),C=P(i+1,j+1),D=P(i,j+1);
+    g.tri(A,C,B,Nn(A),Nn(C),Nn(B),U(A),U(C),U(B)); if(i>0) g.tri(A,D,C,Nn(A),Nn(D),Nn(C),U(A),U(D),U(C)); }
+  return g.v; }
+/** Seeded random numbers, so scenes come out the same every time. */
+function rng(seed){ let a=seed>>>0; return ()=>{ a=(a+0x6D2B79F5)>>>0; let t=a; t=Math.imul(t^(t>>>15),t|1); t^=t+Math.imul(t^(t>>>7),t|61); return ((t^(t>>>14))>>>0)/4294967296; }; }
+// Flat-faced frustum / pyramid / obelisk: like cyl() but each side is one flat facet (rt = 0.01 for a point).
+function flatcyl(rt,rb,h,s){ const g=G(), y=h/2;
+  for(let i=0;i<s;i++){ const a0=i/s*Math.PI*2, a1=(i+1)/s*Math.PI*2, c0=[Math.cos(a0),Math.sin(a0)], c1=[Math.cos(a1),Math.sin(a1)];
+    const b0=[rb*c0[0],-y,rb*c0[1]], b1=[rb*c1[0],-y,rb*c1[1]], t0=[rt*c0[0],y,rt*c0[1]], t1=[rt*c1[0],y,rt*c1[1]];
+    const n=norm(cross(sub(t0,b0),sub(b1,b0))), w=Math.hypot(b1[0]-b0[0],b1[2]-b0[2]), wt=Math.hypot(t1[0]-t0[0],t1[2]-t0[2]), sl=Math.hypot(h,rb-rt);
+    g.tri(b0,t1,b1,n,n,n,[-w/2,0],[wt/2,sl],[w/2,0]); g.tri(b0,t0,t1,n,n,n,[-w/2,0],[-wt/2,sl],[wt/2,sl]);
+    g.tri([0,y,0],t1,t0,[0,1,0],[0,1,0],[0,1,0]); g.tri([0,-y,0],b0,b1,[0,-1,0],[0,-1,0],[0,-1,0]); }
+  return g.v; }
+// A rough boulder: an octahedron with its corners pushed about (flat facets).
+function rock(r,rnd){ const g=G(), j=()=>0.7+0.6*rnd(), P=[[r*j(),0,0],[-r*j(),0,0],[0,r*j()*0.8,0],[0,-r*0.6,0],[0,0,r*j()],[0,0,-r*j()]];
+  for(const [a,b,c] of [[0,2,4],[4,2,1],[1,2,5],[5,2,0],[4,3,0],[1,3,4],[5,3,1],[0,3,5]]){ const n=nTri(P[a],P[b],P[c]), ctr=[0,0,0], m=P[a].map((v,i)=>(v+P[b][i]+P[c][i])/3);
+    if(dot(n,m)<0) g.tri(P[a],P[c],P[b]); else g.tri(P[a],P[b],P[c]); }
+  return g.v; }

@@ -43,7 +43,7 @@ gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.DEPTH_ATTACHMENT,gl.TEXTURE_2D,shadowT
 gl.drawBuffers([gl.NONE]); gl.readBuffer(gl.NONE);
 
 // Lantern shadows: one depth cube map per lamp (up to 3), re-rendered every frame because the lanterns swing.
-const CUBE=512, CUBE_NEAR=0.05, CUBE_FAR=25, MAX_LAMPS=3;
+const CUBE=512, CUBE_NEAR=0.05, MAX_LAMPS=3;
 const cubeTex=[]; for(let i=0;i<MAX_LAMPS;i++){ const t=gl.createTexture(); gl.bindTexture(gl.TEXTURE_CUBE_MAP,t);
   for(let f=0;f<6;f++) gl.texImage2D(gl.TEXTURE_CUBE_MAP_POSITIVE_X+f,0,gl.DEPTH_COMPONENT24,CUBE,CUBE,0,gl.DEPTH_COMPONENT,gl.UNSIGNED_INT,null);
   for(const [k,v] of [[gl.TEXTURE_MIN_FILTER,gl.LINEAR],[gl.TEXTURE_MAG_FILTER,gl.LINEAR],[gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE],[gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE],[gl.TEXTURE_WRAP_R,gl.CLAMP_TO_EDGE],[gl.TEXTURE_COMPARE_MODE,gl.COMPARE_REF_TO_TEXTURE],[gl.TEXTURE_COMPARE_FUNC,gl.LEQUAL]]) gl.texParameteri(gl.TEXTURE_CUBE_MAP,k,v);
@@ -52,7 +52,6 @@ gl.bindTexture(gl.TEXTURE_CUBE_MAP,null);
 const cubeFB=gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER,cubeFB);
 gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.DEPTH_ATTACHMENT,gl.TEXTURE_CUBE_MAP_POSITIVE_X,cubeTex[0],0);
 gl.drawBuffers([gl.NONE]); gl.readBuffer(gl.NONE);
-const CUBE_PROJ=M4.persp(Math.PI/2,1,CUBE_NEAR,CUBE_FAR);
 const CUBE_FACES=[[[1,0,0],[0,-1,0]],[[-1,0,0],[0,-1,0]],[[0,1,0],[0,0,1]],[[0,-1,0],[0,0,-1]],[[0,0,1],[0,-1,0]],[[0,0,-1],[0,-1,0]]];
 
 let W=1,H=1, litTex, edgeTex, depthRB; const sceneFB=gl.createFramebuffer();

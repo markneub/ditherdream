@@ -1,15 +1,8 @@
 // ---------- first-person walking ----------
 // Controls are a port of pacnw's (src/touch.js + player.js there): one thumb on touch,
 // pointer lock + WASD on desktop. Yaw 0 faces -z; positive yaw turns left.
-const WALK = { speed: 2.4, run: 5, eye: 1.7, radius: 0.3, stepUp: 0.45, drop: 0.6 };
 
-// What you can't walk through, per scene (keep in step with scene.js / hold.js). Circles: [x, z, r]; rects: [x, z, halfX, halfZ].
-function walkBlocked(x, z, circles, rects) {
-  const r = WALK.radius;
-  for (const c of circles) if (Math.hypot(x - c[0], z - c[1]) < c[2] + r) return true;
-  for (const b of rects) if (Math.abs(x - b[0]) < b[2] + r && Math.abs(z - b[1]) < b[3] + r) return true;
-  return false;
-}
+// Colliders per scene (keep in step with scene.js / hold.js). Circles: [x, z, r]; rects: [x, z, halfX, halfZ].
 const DECK_CIRCLES = [[2,0,0.45],[5,4.6,0.55],[6.35,4.9,0.55],[5.7,3.5,0.55],[8.4,4.2,0.85],[-10.2,0.2,0.42],[-9.05,0,0.55],[-2.6,4.6,1.15]];
 const DECK_RECTS = [[-1.6,-4.3,0.85,0.85],[0.2,-4.7,0.7,0.7],[4.5,-5.3,0.6,1.3],[8.5,-5.3,0.6,1.3]];
 /** Height of the walkable surface at (x, z), or null where you can't stand (overboard, inside something). */
@@ -33,7 +26,7 @@ HOLD.exit = p => (p.x > 4.55 && p.x < 5.5 && Math.abs(p.z) < 0.5) ? { scene: DEC
 DECK.spawn = { x: 10.5, z: 0, yaw: Math.PI / 2 }; HOLD.spawn = { x: 4.0, z: -1.0, yaw: Math.PI / 2 - 0.3 };
 
 let scene = DECK;
-function floorAt(x, z) { return scene.floorAt(x, z); }
+function floorAt(x, z, y) { return scene.floorAt(x, z, y); } // y: the height you're at now, for places with floors above each other
 
 const player = {
   x: 10.5, z: 0, y: 0, yaw: Math.PI / 2, pitch: 0, vx: 0, vz: 0,
@@ -42,7 +35,7 @@ const player = {
   spinX: 0,                // turn glide after a released look swipe (rad/s, decays)
   keys: new Set(), bob: 0, bobAmp: 0,
   look(dx, dy) { this.yaw -= dx; this.pitch = Math.max(-1.45, Math.min(1.45, this.pitch - dy)); },
-  canStand(x, z, from) { const h = floorAt(x, z); return h !== null && h - from <= WALK.stepUp && from - h <= WALK.drop; },
+  canStand(x, z, from) { const h = floorAt(x, z, from); return h !== null && h - from <= WALK.stepUp && from - h <= WALK.drop; },
   update(dt) {
     if (this.spinX !== 0) { this.look(this.spinX * dt, 0); this.spinX *= Math.exp(-dt * 6); if (Math.abs(this.spinX) < 0.01) this.spinX = 0; }
     const k = this.keys;
@@ -57,10 +50,10 @@ const player = {
     const len = Math.hypot(dx, dz); if (len > 1) { dx /= len; dz /= len; }
     const speed = (running ? WALK.run : WALK.speed) * throttle, blend = 1 - Math.exp(-dt * 10);
     this.vx += (dx * speed - this.vx) * blend; this.vz += (dz * speed - this.vz) * blend;
-    const here = floorAt(this.x, this.z) ?? this.y;
+    const here = floorAt(this.x, this.z, this.y) ?? this.y;
     const nx = this.x + this.vx * dt; if (this.canStand(nx, this.z, here)) this.x = nx; else this.vx = 0;
     const nz = this.z + this.vz * dt; if (this.canStand(this.x, nz, here)) this.z = nz; else this.vz = 0;
-    const floor = floorAt(this.x, this.z) ?? this.y;
+    const floor = floorAt(this.x, this.z, this.y) ?? this.y;
     this.y += (floor - this.y) * (1 - Math.exp(-dt * 12));
     const v = Math.hypot(this.vx, this.vz);
     this.bobAmp += (Math.min(1, v / WALK.speed) - this.bobAmp) * (1 - Math.exp(-dt * 6));

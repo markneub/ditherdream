@@ -14,15 +14,17 @@ const SCENE_FS=`#version 300 es
 precision highp float; precision highp int; precision highp sampler2DShadow; precision highp samplerCubeShadow;
 in vec3 wP; in vec3 wN; in vec3 vN; in vec4 sP; in vec2 vU; flat in vec4 vA; // vA = (object id, shade, emissive, kind)
 uniform sampler2DShadow uShadow; uniform samplerCubeShadow uCube0, uCube1, uCube2;
-uniform vec3 uSunDir, uEye; uniform vec3 uLamp[3]; uniform vec2 uLampP[3]; // lamp position; (intensity, range)
-uniform float uPix, uD, uT, uSky, uSunI, uFill;
-const float CN=0.05, CF=25.0; // must match CUBE_NEAR / CUBE_FAR
+uniform vec3 uSunDir, uEye; uniform vec3 uLamp[3]; uniform vec2 uLampP[3]; uniform vec4 uLampD[3]; // lamp position; (intensity, range); spot (direction, cos of half-angle; -2 = shines all round)
+uniform float uPix, uD, uT, uSky, uSunI, uFill, uFoam, uFoamR, uEdge; uniform vec2 uCubeNF; // cube shadow near, far
+#define CN uCubeNF.x
+#define CF uCubeNF.y
 float cubeSh(samplerCubeShadow c, vec3 v, float bias){ vec3 a=abs(v); float m=max(max(a.x,max(a.y,a.z))-bias,CN);
   float d=(CF+CN)/(CF-CN)-2.0*CF*CN/((CF-CN)*m); return texture(c,vec4(v,d*0.5+0.5)); }
 float lampLight(int i, vec3 n){ vec2 P=uLampP[i]; if(P.x<=0.0) return 0.0;
   vec3 Lv=uLamp[i]-wP; float d=length(Lv), att=pow(clamp(1.0-d/P.y,0.0,1.0),2.0), nl=max(dot(n,Lv/d),0.0);
+  vec4 D=uLampD[i]; bool spot=D.w>-1.5; if(spot) att*=smoothstep(D.w,D.w+0.035,dot(-Lv/d,D.xyz));
   // a little unshadowed fill near each lamp stands in for light bouncing round the room
-  float fill=uFill*P.x*pow(clamp(1.0-d/(P.y*0.55),0.0,1.0),2.0);
+  float fill=spot ? 0.0 : uFill*P.x*pow(clamp(1.0-d/(P.y*0.55),0.0,1.0),2.0);
   if(att*nl<=0.0) return fill;
   float bias=0.03+0.08*(1.0-nl);
   float s = i==0 ? cubeSh(uCube0,-Lv,bias) : i==1 ? cubeSh(uCube1,-Lv,bias) : cubeSh(uCube2,-Lv,bias);
@@ -56,7 +58,8 @@ float surf(vec2 uv, float lum, float sigma){
 }
 void main(){
   vec3 n=normalize(wN); vec3 Vd=uEye-wP; float dist=length(Vd); Vd/=dist;
-  if(dot(n,Vd)<0.0) n=-n; // thin two-sided things (hammocks) light the side you see
+  vec3 vn=normalize(vN);
+  if(dot(n,Vd)<0.0){ n=-n; vn=-vn; } // thin two-sided things (hammocks, shells) light the side you see
   float lum;
   vec3 s=sP.xyz/sP.w*0.5+0.5; float sh=1.0;
   float ndl=max(dot(n,uSunDir),0.0);
@@ -70,12 +73,15 @@ void main(){
     // swell: broken bands of light travelling across the water, plus foam along the hull
     float ph=dot(wP.xz,vec2(0.17,0.52))+2.2*vnoise(wP.xz*0.09)-uT*0.55;
     float crest=smoothstep(0.72,1.0,sin(ph))*smoothstep(0.42,0.68,vnoise(wP.xz*vec2(0.16,0.4)+vec2(uT*0.06,0.0)));
-    float foam=smoothstep(1.3,0.15,hullDist(wP.xz)+0.9*vnoise(wP.xz*1.3+uT*0.25));
-    lum=(0.42*crest*(0.4+0.6*sh)+1.3*spec*sh)*fog+0.75*foam;
+    float shore = uFoam<0.5 ? 9.0 : uFoam<1.5 ? hullDist(wP.xz) : length(wP.xz)-uFoamR; // 1: the ship's hull, 2: a round island
+    float foam=smoothstep(1.3,0.15,shore+0.9*vnoise(wP.xz*1.3+uT*0.25));
+    vec3 up=vec3(0.0,1.0,0.0);
+    lum=(0.42*crest*(0.4+0.6*sh)+1.3*spec*sh)*fog+0.75*foam+0.8*(lampLight(0,up)+lampLight(1,up)+lampLight(2,up));
   } else {
     float lamp=lampLight(0,n)+lampLight(1,n)+lampLight(2,n);
     float sky=(0.05+0.05*n.y)*uSky;
     lum=vA.y*(sky+uSunI*ndl*sh+lamp);
+    if(uEdge>0.0) lum*=smoothstep(uEdge+22.0,uEdge,length(wP.xz)); // the world fades to black past the scene's edge
     lum=clamp(lum,0.0,1.0);
     lum=smoothstep(0.0,1.0,clamp((lum-0.03)/0.9,0.0,1.0));
   }
@@ -84,7 +90,7 @@ void main(){
   float sigma=dist*uPix/sqrt(max(cs,0.1));
   float bit=surf(vU,lum,sigma);
   oLit=vec4(bit,lum,0.0,1.0);
-  oEdge=vec4(normalize(vN)*0.5+0.5,vA.x);
+  oEdge=vec4(vn.xy*0.5+0.5, floor(vA.x/256.0)/255.0, mod(vA.x,256.0)/255.0); // view normal xy + 16-bit object id
 }`;
 
 const SHADOW_VS=`#version 300 es
@@ -99,15 +105,22 @@ in vec3 aP; out vec2 vUv; void main(){ vUv=aP.xy*0.5+0.5; gl_Position=vec4(aP.xy
 const POST_FS=`#version 300 es
 precision highp float; precision highp int;
 uniform sampler2D tLit, tEdge;
-uniform vec2 res; uniform float tanHalf, aspect, mode, edges, raw;
+uniform vec2 res; uniform float tanHalf, aspect, mode, edges, raw, day;
 uniform mat3 camRot; uniform vec3 dark, light, uMoon, uMoon2;
 in vec2 vUv; out vec4 o;
 ${RANK}
 float hash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
+vec3 nrm(vec4 c){ vec2 n=c.rg*2.0-1.0; return vec3(n,sqrt(max(0.0,1.0-dot(n,n)))); }
 void main(){
   vec4 L=texture(tLit,vUv), c=texture(tEdge,vUv);
   float lum=L.g, bit;
-  if(c.a==0.0){
+  bool bg = c.b==0.0 && c.a==0.0;
+  if(bg && day>0.5){
+    // daytime sky: white, with the sun as a thin ring
+    vec2 ndc=vUv*2.0-1.0;
+    vec3 d=camRot*normalize(vec3(ndc.x*tanHalf*aspect, ndc.y*tanHalf, -1.0));
+    float m=dot(d,uMoon); bit = (m>0.9966 && m<0.9976) ? 0.0 : 1.0; lum=1.0;
+  } else if(bg){
     // sky: anchored to view direction, so it is stable under any camera motion
     vec2 ndc=vUv*2.0-1.0;
     vec3 d=camRot*normalize(vec3(ndc.x*tanHalf*aspect, ndc.y*tanHalf, -1.0));
@@ -126,9 +139,10 @@ void main(){
   if(edges>0.5){
     vec2 px=1.0/res;
     vec4 r=texture(tEdge,vUv+vec2(px.x,0.0)), u=texture(tEdge,vUv+vec2(0.0,px.y));
-    bool e=abs(c.a-r.a)>0.002 || abs(c.a-u.a)>0.002;
-    if(c.a>0.0 && r.a>0.0 && dot(c.rgb*2.0-1.0,r.rgb*2.0-1.0)<0.75) e=true;
-    if(c.a>0.0 && u.a>0.0 && dot(c.rgb*2.0-1.0,u.rgb*2.0-1.0)<0.75) e=true;
+    bool e=abs(c.a-r.a)+abs(c.b-r.b)>0.002 || abs(c.a-u.a)+abs(c.b-u.b)>0.002;
+    bool rb=r.b==0.0&&r.a==0.0, ub=u.b==0.0&&u.a==0.0;
+    if(!bg && !rb && dot(nrm(c),nrm(r))<0.75) e=true;
+    if(!bg && !ub && dot(nrm(c),nrm(u))<0.75) e=true;
     if(e){ float l2=max(lum, max(texture(tLit,vUv+vec2(px.x,0.0)).g, texture(tLit,vUv+vec2(0.0,px.y)).g)); bit = l2>0.5 ? 0.0 : 1.0; }
   }
   o=vec4(mix(dark,light,bit),1.0);
