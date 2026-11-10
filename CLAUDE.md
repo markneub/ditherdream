@@ -9,7 +9,9 @@ dithered with dots that stick to surfaces. No build step, no runtime dependencie
 - `npm install && npm run shots` renders fixed camera angles at phone size into `shots/`
   (gitignored) and exits non-zero on any page or shader error. Set `CHROME_PATH` to use an
   installed Chrome instead of Playwright's download. Look at the PNGs after every visual change.
-- `window.__dbg` exposes `S` (dev switches) and `cam(theta, phi, radius)` for scripted views.
+- `window.__dbg` exposes `S` (dev switches), `cam(theta, phi, radius)`, `setView(v)`, `player` and
+  `walk(x, z, yaw, pitch)` for scripted views. The shots script also runs a simulated walk test
+  (`player.update(1/60)` in a loop: up the steps, into the rail, to the bow, off the quarterdeck edge).
 
 ## Deploy
 
@@ -29,7 +31,8 @@ Files load in this order and share the global scope (top-level `const`s are visi
 | `src/shaders.js` | All GLSL: `SCENE_*` (lighting + surface dots), `SHADOW_*`, `POST_*` (sky, edges, palette) |
 | `src/renderer.js` | GL setup, programs, shadow map, MRT framebuffer, `resize()` |
 | `src/scene.js` | The ship: every object is one `add(geometry, pos, rot, shade, opts)` call |
-| `src/main.js` | Orbit input, the frame loop (shadow pass, scene pass, post pass) |
+| `src/walk.js` | First-person `player`, `floorAt()` + colliders for the ship, touch and desktop controls |
+| `src/main.js` | Orbit input, `setView('orbit' or 'walk')`, the frame loop (shadow pass, scene pass, post pass) |
 
 ## How the frame is built
 
@@ -44,6 +47,25 @@ exact block of screen pixels.
 **The look is fixed, with no on-screen options** (the user's pick): fine surface dots, 2 device
 pixels per scene pixel on a phone, outlines on, pure black and white. `S.mode = 1` (screen-space
 Bayer), `S.raw`, `S.edges` and `S.spin` remain as dev switches via `window.__dbg.S`.
+
+## Walking (`src/walk.js`)
+
+The one button on screen switches between orbiting and walking the deck (the user asked for a
+first-person scene with **the same walk controls as their pacnw project**; this is a port of its
+`touch.js`/`player.js`, keep the two in step):
+
+- **Touch, one thumb:** sliding sideways turns (~130 degrees per screen width); how far up from the touch
+  point sets speed (80 px = full, over 0.92 runs, pulling down backs up slowly). Holding still
+  260 ms (within 10 px) makes the drag a free look instead, with a vignette (`#look-cue`); letting go
+  mid-swipe glides the turn; after a look the pitch eases back to level. A second finger while
+  walking is also a free look.
+- **Desktop:** click captures the mouse (a held drag looks if pointer lock is refused), WASD/arrows, Shift runs.
+- Yaw 0 faces -z, positive yaw turns left. Speeds are scaled to the deck (2.4 m/s walk, 5 run; pacnw uses 5/13).
+- `floorAt(x, z)` is the walkable height or `null` (overboard or inside a collider). A move is allowed
+  if the floor there is at most 0.45 m up or 0.6 m down from here, which gives steps, the hatch,
+  and the quarterdeck edge with one rule. Colliders are hand-listed to match `scene.js`: **update
+  both when moving objects**.
+- Walking uses a wider lens (82 degrees vertical on a tall screen, 66 on a wide one) and a 6 cm near plane.
 
 ## Surface-stable dots (`surf()` in `SCENE_FS`)
 
@@ -81,5 +103,5 @@ After Rune Skovbo Johansen's "surface-stable fractal dithering", done procedural
 ## Ideas not yet tried
 
 Hatching or line patterns instead of dots; per-material patterns (Obra Dinn mixes Bayer and
-blue noise); first-person camera with walking; importing a glTF model; dot anti-shimmer by
+blue noise); importing a glTF model; dot anti-shimmer by
 snapping dot centres to pixel centres.
