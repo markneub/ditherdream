@@ -1,0 +1,11 @@
+{
+  "name": "ditherdream",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "shots": "node tools/shot.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.63.0"
+  }
+}
