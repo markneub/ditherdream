@@ -141,6 +141,32 @@ After Rune Skovbo Johansen's "surface-stable fractal dithering", done procedural
 - The hold's floor is mid-tone dots nearly everywhere a lamp reaches: busy. Fewer, brighter pools might read better.
 - Looking up through the hatch from the hold shows sky only (the deck's mast and rigging aren't in that scene).
 
+## Next: a scene built from real models (the user's request)
+
+The user finds the scenes' art "too rudimentary" (everything is boxes and cylinders generated in code) and
+wants **a higher-quality scene with actual models, e.g. from Poly Haven** (CC0). Agreed first target: Poly Haven's
+*Dutch Ship Medium* at anchor at night, as a new scene alongside `deck`, so the two can be compared like for like
+(barrels/crates from Poly Haven as dressing). The user's pacnw repo already uses that ship; its
+`blender/build_coast.py` and `tools/fetch_textures.py` show how it fetched and trimmed Poly Haven assets.
+
+- **Getting the files:** needs `api.polyhaven.com` and `dl.polyhaven.org` reachable. The session that wrote this
+  was refused by the network allowlist (403 from the proxy). **Try a request first**; if it is still blocked, say
+  so and ask the user to attach the glTF files (1k or 2k textures) rather than looking for another route.
+  Commit the assets under `assets/` and add that folder to the `cp` line in `.github/workflows/pages.yml`.
+- **Loading:** a small glTF reader (meshes, node transforms, base-colour texture) in the page. `fetch` doesn't
+  work from `file://`, so the shots script must serve the folder (e.g. `python3 -m http.server`) instead of opening
+  `index.html` directly; update "Run and check" when that changes. Decimate if a model is heavy: each lamp
+  re-renders the scene six times a frame.
+- **Dots without clean UVs:** scan UV atlases would tear the dot lattice. Compute the lattice coordinates in the
+  fragment shader by projecting object-space position along the dominant axis of the normal (triplanar, hard
+  switch), in metres, and feed that to `surf()` in place of `vU`. `sigma` is already analytic, so it needs no UVs.
+- **Texture as tone:** multiply `vA.y` (shade) by the base-colour texture's luminance (boost its contrast), so
+  planking and grain come through as denser or sparser dots.
+- **Outlines:** the normal-difference rule will scribble over a detailed mesh. For model objects use depth
+  discontinuities + object ids only (write linear depth into the lit target's spare channel), and consider a
+  crease-angle threshold far higher than 0.75. This is the real risk: judge it from shots before building further.
+- Keep colliders/`floorAt` simple (hand-placed boxes over the deck) until the look is proven.
+
 ## Ideas not yet tried
 
 A visible lighthouse beam (a dotted cone?). Hatching or line patterns instead of dots; per-material patterns (Obra Dinn mixes Bayer and
