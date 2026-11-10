@@ -1,5 +1,5 @@
 // ---------- scenes ----------
-const SCENES = [DECK, ANCHOR, OFFICE, HOLD, LIGHTHOUSE, FOREST, CATHEDRAL, TRAIN, RUINS];
+const SCENES = [DECK, ANCHOR, OFFICE, RUSH, HOLD, LIGHTHOUSE, FOREST, CATHEDRAL, TRAIN, RUINS];
 const hint=document.getElementById('hint'), modeBtn=document.getElementById('mode'), fade=document.getElementById('fade');
 const scenesBtn=document.getElementById('scenes'), sceneList=document.getElementById('scene-list');
 const coarse=matchMedia('(pointer: coarse)').matches;
@@ -23,15 +23,19 @@ function showHint(){
   hint.firstElementChild.innerHTML = view==='orbit' ? 'drag to orbit · pinch / scroll to zoom'
     : (coarse ? 'slide up to walk · sideways to turn<br>hold still to look around' : 'click, then WASD to walk · Shift to run')
       + (scene.tip ? '<br>'+scene.tip : '');
+  if(scene.hint) hint.firstElementChild.innerHTML = scene.hint;
   if(scene.load&&!scene.ready) hint.firstElementChild.innerHTML = scene.failed ? 'could not load the model'+(location.protocol==='file:'?'<br>(it needs a web server, not file://)':'') : (scene.loadingText||'loading\u2026');
   hint.style.display='';
 }
 /** Put the player somewhere in a scene (its spawn by default), with a short fade. Scenes without an orbit view are walked. */
 function setScene(sc,at){
+  if(scene!==sc&&scene.leave) scene.leave();
   scene=sc; at=at||sc.spawn;
   player.x=at.x; player.z=at.z; player.yaw=at.yaw; player.pitch=0; player.vx=player.vz=0; player.y=at.y??0; player.y=floorAt(at.x,at.z,player.y)??player.y;
   if(sc.orbit){ const o=sc.orbit; target=o.target; radius=innerWidth<innerHeight?o.radius[0]:o.radius[1]; theta=o.theta; phi=o.phi; }
   else if(view==='orbit') view='walk';
+  if(sc.camera) view='game'; else if(view==='game') view='walk';   // a scene with its own camera and controls
+  if(sc.enter) sc.enter();
   modeBtn.style.display=sc.orbit?'':'none'; modeBtn.textContent = view==='walk' ? 'Orbit' : 'Walk';
   for(const b of sceneList.children) b.classList.toggle('cur',b.dataset.name===sc.name);
   // scenes built from model files fetch them the first time they are opened
@@ -63,7 +67,7 @@ let last=performance.now(), T=0;
 const IDENT=new Float32Array([1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]);
 function frame(now){
   const dt=Math.min((now-last)/1000,0.05); last=now; T+=dt;
-  const walking=view==='walk';
+  const game=!!scene.camera, walking=view==='walk'&&!game;
   if(walking){ player.update(dt); const go=scene.exit&&scene.exit(player); if(go) setScene(go.scene,go); }
   else if(S.spin && ptrs.size===0) theta+=dt*0.07;
   const sc=scene;
@@ -74,13 +78,15 @@ function frame(now){
     if(l.obj) l.obj.pos=l.pos;
     const ph=l.phase||0; l.now=l.intensity*(1+(l.flicker??0.07)*Math.sin(T*7.3+ph)*Math.sin(T*3.1+ph*2)); }
   // a wider lens on foot, wider still on a tall screen
-  const FOV=(walking ? (W<H?82:66) : 60)*Math.PI/180;
+  const FOV=(walking||game ? (W<H?82:66) : 60)*Math.PI/180;
 
   let eye, look;
-  if(walking){ eye=player.eye(); const d=player.dir(); look=[eye[0]+d[0],eye[1]+d[1],eye[2]+d[2]]; }
+  let camUp=[0,1,0];
+  if(game){ const c=sc.camera(); eye=c.eye; look=c.look; camUp=c.up||camUp; }
+  else if(walking){ eye=player.eye(); const d=player.dir(); look=[eye[0]+d[0],eye[1]+d[1],eye[2]+d[2]]; }
   else { eye=[target[0]+radius*Math.sin(phi)*Math.cos(theta), target[1]+radius*Math.cos(phi), target[2]+radius*Math.sin(phi)*Math.sin(theta)]; look=target; }
-  const V=M4.lookAt(eye,look,[0,1,0]);
-  const VP=M4.mul(M4.persp(FOV,W/H,walking?0.06:0.2,600),V);
+  const V=M4.lookAt(eye,look,camUp);
+  const VP=M4.mul(M4.persp(FOV,W/H,walking||game?0.06:0.2,600),V);
 
   const drawScene=(uM,shadows,lamp)=>{
     gl.uniformMatrix4fv(uM,false,IDENT); gl.bindVertexArray(sc.statics.a); gl.drawArrays(gl.TRIANGLES,0,sc.statics.n);
@@ -131,7 +137,7 @@ function frame(now){
   gl.uniform2f(p.res,W,H); gl.uniform1f(p.tanHalf,Math.tan(FOV/2)); gl.uniform1f(p.aspect,W/H);
   gl.uniformMatrix3fv(p.camRot,false,new Float32Array([V[0],V[4],V[8], V[1],V[5],V[9], V[2],V[6],V[10]]));
   gl.uniform1f(p.mode,S.mode); gl.uniform1f(p.edges,S.edges?1:0); gl.uniform1f(p.raw,S.raw?1:0); gl.uniform1f(p.day,sc.day?1:0);
-  gl.uniform3fv(p.dark,DARK); gl.uniform3fv(p.light,LIGHT);
+  gl.uniform3fv(p.dark,sc.invert?LIGHT:DARK); gl.uniform3fv(p.light,sc.invert?DARK:LIGHT);   // a scene can swap the two colours
   gl.uniform3fv(p.uMoon,sc.sunDir); gl.uniform3fv(p.uMoon2,sc.moon2);
   gl.bindVertexArray(quad); gl.drawArrays(gl.TRIANGLES,0,3);
   gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D,null);
