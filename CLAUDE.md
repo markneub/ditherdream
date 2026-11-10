@@ -69,10 +69,12 @@ After Rune Skovbo Johansen's "surface-stable fractal dithering", done procedural
 ## Known weak spots
 
 - Grazing-angle surfaces turn dots into dashes; no anisotropy compensation yet.
+  Round dots there need an anisotropic lattice (separate fractal levels along and across the view
+  direction); just stretching dots in UV makes them overlap their neighbours.
 - Small dots shimmer at their edges as they cross the pixel grid (no anti-aliasing in 1-bit).
 - The 50% flip between dark-dots and light-dots is a visible contour on smooth gradients.
 - Spheres and the bow wedge use per-triangle planar UVs, so the pattern has seams there.
-- Sea is nearly black except moon glitter; star cells can twinkle.
+- Sea: black with broken swell bands, foam along the hull (`hullDist`) and moon glitter; star cells can twinkle.
 - Outlines are 1 px and can clutter on thin distant objects (balusters, cannon wheels).
 - Lantern light casts no shadows.
 

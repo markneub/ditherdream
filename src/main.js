@@ -22,7 +22,7 @@ function frame(now){
   if(S.spin && ptrs.size===0) theta+=dt*0.07;
   const sw=Math.sin(T*1.1)*0.22;
   const lampPos=[3,2.9-Math.abs(sw)*0.05,sw]; lampObj.pos=lampPos;
-  const lampI=1.5+0.12*Math.sin(T*7.3)*Math.sin(T*3.1);
+  const lampI=2.3+0.18*Math.sin(T*7.3)*Math.sin(T*3.1);
 
   const eye=[target[0]+radius*Math.sin(phi)*Math.cos(theta), target[1]+radius*Math.cos(phi), target[2]+radius*Math.sin(phi)*Math.sin(theta)];
   const V=M4.lookAt(eye,target,[0,1,0]);

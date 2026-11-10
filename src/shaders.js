@@ -17,6 +17,14 @@ uniform sampler2DShadow uShadow; uniform vec3 uSunDir, uLamp, uEye;
 uniform float uShade, uEmit, uId, uKind, uPix, uD, uT, uLampI;
 layout(location=0) out vec4 oLit; layout(location=1) out vec4 oEdge;
 ${RANK}
+float h21(vec2 p){ vec3 q=fract(vec3(p.xyx)*0.1031); q+=dot(q,q.yzx+33.33); return fract((q.x+q.y)*q.z); }
+float vnoise(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f);
+  return mix(mix(h21(i),h21(i+vec2(1,0)),f.x), mix(h21(i+vec2(0,1)),h21(i+vec2(1,1)),f.x), f.y); }
+// Distance from the hull's waterline outline (box x -12..12, z +-7, plus the bow wedge to x = 18).
+float hullDist(vec2 p){
+  vec2 q=abs(p)-vec2(12.0,7.0); float box=length(max(q,0.0))+min(max(q.x,q.y),0.0);
+  float bow=max((abs(p.y)-7.0*(18.0-p.x)/6.0)*0.651, 12.0-p.x);
+  return min(box,bow); }
 // Surface-stable fractal dots: a self-similar Bayer point set stuck to the surface.
 // As the surface recedes, dots drop out in Bayer order so on-screen density stays constant.
 float surf(vec2 uv, float lum, float sigma){
@@ -45,13 +53,17 @@ void main(){
   if(uKind>0.5){
     vec3 wn=normalize(vec3(0.22*sin(wP.x*0.9+uT*1.1)+0.18*sin(wP.z*1.7-uT*0.8+wP.x*0.3), 1.0, 0.22*sin(wP.z*1.1+uT*0.9)+0.18*sin(wP.x*2.1+uT*1.3)));
     float spec=pow(max(dot(reflect(-Vd,wn),uSunDir),0.0),50.0);
-    float fog=exp(-dist/70.0);
-    lum=(0.015+1.3*spec*sh)*fog;
+    float fog=exp(-dist/60.0);
+    // swell: broken bands of light travelling across the water, plus foam along the hull
+    float ph=dot(wP.xz,vec2(0.17,0.52))+2.2*vnoise(wP.xz*0.09)-uT*0.55;
+    float crest=smoothstep(0.72,1.0,sin(ph))*smoothstep(0.42,0.68,vnoise(wP.xz*vec2(0.16,0.4)+vec2(uT*0.06,0.0)));
+    float foam=smoothstep(1.3,0.15,hullDist(wP.xz)+0.9*vnoise(wP.xz*1.3+uT*0.25));
+    lum=(0.42*crest*(0.4+0.6*sh)+1.3*spec*sh)*fog+0.75*foam;
   } else {
-    vec3 Lv=uLamp-wP; float d=length(Lv); float att=pow(clamp(1.0-d/8.0,0.0,1.0),2.0);
+    vec3 Lv=uLamp-wP; float d=length(Lv); float att=pow(clamp(1.0-d/7.0,0.0,1.0),2.0);
     float lamp=max(dot(n,Lv/d),0.0)*att*uLampI;
     float sky=0.05+0.05*n.y;
-    lum=uShade*(sky+1.55*ndl*sh+lamp);
+    lum=uShade*(sky+1.9*ndl*sh+lamp);
     lum=clamp(lum,0.0,1.0);
     lum=smoothstep(0.0,1.0,clamp((lum-0.03)/0.9,0.0,1.0));
   }
