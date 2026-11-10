@@ -1,7 +1,7 @@
 # ditherdream
 
-A 1-bit, Obra Dinn-inspired renderer experiment in plain WebGL2: nine small scenes (a ship's deck and
-hold, a real ship model at anchor, an empty office, a lighthouse, a forest, a cathedral, a night train, desert ruins), dithered with dots that stick to surfaces. No build step, no runtime dependencies.
+A 1-bit, Obra Dinn-inspired renderer experiment in plain WebGL2: ten small scenes (a ship's deck and
+hold, a real ship model at anchor, an empty office, a tunnel-flying game, a lighthouse, a forest, a cathedral, a night train, desert ruins), dithered with dots that stick to surfaces. No build step, no runtime dependencies.
 Seven scenes are boxes and cylinders generated in code; `anchor` is a Poly Haven model and `office` is code-built rooms
 with Poly Haven furniture, both loaded from `assets/`.
 
@@ -17,7 +17,7 @@ with Poly Haven furniture, both loaded from `assets/`.
 - `window.__dbg`: `S` (dev switches), `scenes` (by name), `setScene(sc)`, `setView('orbit'|'walk')`,
   `cam(theta, phi, radius)`, `player`, `walk(x, z, yaw, pitch, sceneName, y)`.
 - Walk tests (simulated, `player.update(1/60)` in a loop): the deck's steps/rails/edges, hatch down and
-  ladder up, the anchored ship's two ladders and bulwark, every office room reachable from the spawn (flood fill), the lighthouse door → spiral stair → lamp room → gallery, and every scene's spawn + 20 s straight ahead.
+  ladder up, the anchored ship's two ladders and bulwark, every office room reachable from the spawn (flood fill), tunnel run (a scripted player clears ten gates; no input crashes), the lighthouse door → spiral stair → lamp room → gallery, and every scene's spawn + 20 s straight ahead.
 
 ## Deploy
 
@@ -41,6 +41,7 @@ Files load in this order and share the global scope (top-level `const`s are visi
 | `src/scene.js` | Scene builder (`beginScene`/`add`/`B`/`lantern`/`endScene`), `modelObject`/`modelBatch` + `heightField` for imported meshes, `WALK` + `walkBlocked`, and `DECK` |
 | `src/gltf.js` | `loadGLTF(url)`: meshes with node transforms applied, and each one's base-colour image URL |
 | `src/anchor.js` | The model scene: loads the ship on first open, builds its height map, ladders |
+| `src/rush.js` | Tunnel run: the game's state `R`, gate pool, its own camera and input, HUD |
 | `src/office.js` | The office: floor plan helpers (`oWall`, `oPart`, `oLights`), furniture placement, the roaming lamps |
 | `src/hold.js` `lighthouse.js` `forest.js` `cathedral.js` `train.js` `ruins.js` | One scene each: geometry, lamps, `update(T)`, `floorAt`, `spawn` |
 | `src/walk.js` | First-person `player`, the deck's and hold's floors and the hatch/ladder between them, `scene` (the current one), touch and desktop controls |
@@ -87,6 +88,7 @@ in it with a Walk/Orbit button; the rest are walked.
 | `deck` | the original | moonlit, one lantern; the open hatch leads to `hold` |
 | `anchor` | a real model, to compare with `deck` | see "The model scene" below |
 | `office` | flicker, darkness, many copies of models | see "The office" below |
+| `rush` | the dots at speed; a game | see "Tunnel run" below |
 | `hold` | lantern light, hard swinging shadows | moonlight only through the hatch grating; the ladder leads up |
 | `lighthouse` | a moving light, a climb | spot lamp turning in the lamp room (lights the sea via the sea shader); 3.5-turn spiral stair: `floorAt` returns the highest floor within a step's reach of your height (several floors overlap); gallery door is opposite the stair well |
 | `forest` | many thin overlapping shapes | 85 conifers (seeded), campfire lamp with jitter + flicker, dappled moonlight |
@@ -216,6 +218,22 @@ three offices, meeting room, break room, a long corridor and a store room. The r
   shadow pass (there is no sun indoors). Textures were shrunk to 512 px; see `assets/README.md`.
 - **First guesses, from headless stills only:** lamp brightness (1.9) and wall/carpet shades, the flicker timing (never seen
   in motion here). Not yet tried on a phone.
+
+## Tunnel run (`rush`)
+
+A prototype the user agreed to after brainstorming game ideas: does the look survive speed, and is "white is open, black
+is solid, tap to invert the picture" fun? Not yet played by anyone; speeds, gate spacing and steering feel are guesses.
+
+- **Rule:** each gate is four quarter panels, light (emissive), dark (shade 0.02) or missing. You pass through what is white
+  on screen. A tap sets `RUSH.invert`, which swaps the post pass's two palette colours (any scene can set `sc.invert`), so
+  the dark panels become the white ones. Patterns (`RPATS`) come in either polarity and get harder with the score.
+- **Scene hooks added for it** (usable by any scene): `sc.camera()` returns `{eye, look, up}` and makes the scene a game
+  (`view = 'game'`: no walking, no orbit, walk.js's touch handlers stay out of it); `sc.enter()` / `sc.leave()` run from
+  `setScene`; `sc.hint` replaces the controls hint.
+- **Endless tunnel:** 43 identical 4 m segments, each its own object so the dots and outlines repeat exactly; the camera's z
+  wraps every 4 m. Gates are eight pooled sets of panels placed relative to the camera, parked at y -100 when unused.
+- **Controls:** touch drag steers (relative), a quick tap inverts; mouse position steers and a click inverts; arrows/WASD + space.
+- One lamp travels with the camera (plus `fill`, since light along a tunnel hits the walls at a grazing angle).
 
 ## Ideas not yet tried
 
