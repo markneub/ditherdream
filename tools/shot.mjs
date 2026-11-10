@@ -31,6 +31,8 @@ const VIEWS = [
 const WALKS = [
   ['deck-bow', 'deck', 10.5, 0, 1.571, 0], ['deck-quarterdeck', 'deck', -11, 3, -1.9, -0.1],
   ['anchor-deck', 'anchor', -4.6, 0.9, -1.571, 0], ['anchor-aft', 'anchor', 3.0, -1.3, 1.571, 0.1], ['anchor-up', 'anchor', -3.6, -1.1, -1.2, 0.75], ['anchor-quarterdeck', 'anchor', -7.2, 0.9, -1.75, -0.2, 3.1],
+  ['office-reception', 'office', -17.6, 12.6, -1.571, 0], ['office-hall', 'office', -8.5, 12.5, -1.4, 0], ['office-farm', 'office', -18.5, 0.5, -1.571, 0], ['office-cubicle', 'office', -14.2, -6.3, 2.72, -0.3],
+  ['office-corridor', 'office', 1.5, -8.5, -1.571, 0], ['office-lone', 'office', 12.6, 12.7, -1.2, -0.25], ['office-meeting', 'office', -10.2, -8.2, 1.1, -0.1], ['office-office', 'office', 10.5, 0.6, -1.571, -0.05],
   ['hold-arrive', 'hold', 4.0, -1.0, 1.271, 0], ['hold-hammocks', 'hold', -2, 1.6, 2.2, 0.05], ['hold-ladder', 'hold', 2.2, -2.4, -1.95, 0.3],
   ['lighthouse-door', 'lighthouse', 9.5, 0, 1.571, 0.25], ['lighthouse-stairs', 'lighthouse', 1.3, -0.9, 1.9, 0.35, 0], ['lighthouse-lamp', 'lighthouse', 1.2, -1.0, 1.0, 0.1, 16], ['lighthouse-gallery', 'lighthouse', 1.9, -2.35, -2.2, -0.2, 16],
   ['forest-path', 'forest', 24, 0, 1.571, 0], ['forest-fire', 'forest', 4.5, -1.5, 1.2, 0], ['forest-deep', 'forest', -14, -12, -2.2, 0.15],
@@ -52,7 +54,7 @@ await p.goto(page);
 await p.waitForTimeout(1500);
 if (await p.textContent('#err')) { console.log('error box:', await p.textContent('#err')); process.exit(1); }
 await p.evaluate(() => { __dbg.S.spin = false; });
-await p.evaluate(() => __dbg.scenes.anchor.load()); // fetch the model before any shot or test needs it
+await p.evaluate(() => Promise.all(Object.values(__dbg.scenes).filter(s => s.load).map(s => s.load()))); // fetch the models before any shot or test needs them
 const snap = async name => { await p.evaluate(() => { document.getElementById('hint').style.display = 'none'; const f = document.getElementById('fade'); f.style.transition = 'none'; f.style.opacity = 0; }); await p.waitForTimeout(700); await p.screenshot({ path: `${out}${name}.png` }); shots++; };
 for (const [name, sc, t, ph, r] of VIEWS) { if (only && !name.startsWith(only)) continue;
   await p.evaluate(([sc, t, ph, r]) => { __dbg.setScene(__dbg.scenes[sc]); __dbg.setView('orbit'); __dbg.cam(t, ph, r); }, [sc, t, ph, r]); await snap(name); }
@@ -87,6 +89,13 @@ if (!only || only === 'tests') {
     // the anchored ship: up the ladder to the quarterdeck, and not through the bulwark
     const qd = run('anchor', -4.2, -0.65, 1.571, 4), fc = run('anchor', 2.6, -0.8, -1.571, 4), side = run('anchor', -2, 1, 3.1416, 4);
     if (qd.y < 3 || qd.x > -5.6 || fc.y < 2.9 || fc.x < 4 || Math.abs(side.z) > 2.3 || side.y > 2.1) bad.push({ anchor: { qd, fc, side } });
+    // the office: every room can be reached on foot from the spawn (flood fill over floorAt on a 20 cm grid)
+    { const f = S.office.floorAt, k = (i, j) => i * 1000 + j, seen = new Set(), q = [[Math.round(S.office.spawn.x / 0.2), Math.round(S.office.spawn.z / 0.2)]];
+      seen.add(k(...q[0]));
+      while (q.length) { const [i, j] = q.pop(); for (const [a, b] of [[i + 1, j], [i - 1, j], [i, j + 1], [i, j - 1]]) if (!seen.has(k(a, b)) && f(a * 0.2, b * 0.2) !== null) { seen.add(k(a, b)); q.push([a, b]); } }
+      const rooms = { hall: [0, 11], lone: [12, 12], farm: [-18.4, 0], corridor: [7.6, 0], officeN: [12, -4.6], officeM: [12, 0.8], officeS: [12, 4.6], meeting: [-11, -13], breakRoom: [-3, -11], long: [15, -8.4], store: [12, -12.6], aisle: [-10, 0], bay: [-10.1, -4.6] };
+      const lost = Object.keys(rooms).filter(n => !seen.has(k(Math.round(rooms[n][0] / 0.2), Math.round(rooms[n][1] / 0.2))));
+      if (lost.length) bad.push({ office: { unreachable: lost } }); }
     // every scene: the spawn is standable, and walking straight ahead for a while never leaves the floor
     for (const name in S) { const sp = S[name].spawn, r = run(name, sp.x, sp.z, sp.yaw, 20); if (r.floor === null) bad.push({ [name]: r }); }
     __dbg.setScene(S.deck); return bad;

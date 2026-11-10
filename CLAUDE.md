@@ -1,22 +1,23 @@
 # ditherdream
 
-A 1-bit, Obra Dinn-inspired renderer experiment in plain WebGL2: eight small scenes (a ship's deck and
-hold, a real ship model at anchor, a lighthouse, a forest, a cathedral, a night train, desert ruins), dithered with dots that stick to surfaces. No build step, no runtime dependencies.
-Seven scenes are boxes and cylinders generated in code; `anchor` is a Poly Haven model loaded from `assets/`.
+A 1-bit, Obra Dinn-inspired renderer experiment in plain WebGL2: nine small scenes (a ship's deck and
+hold, a real ship model at anchor, an empty office, a lighthouse, a forest, a cathedral, a night train, desert ruins), dithered with dots that stick to surfaces. No build step, no runtime dependencies.
+Seven scenes are boxes and cylinders generated in code; `anchor` is a Poly Haven model and `office` is code-built rooms
+with Poly Haven furniture, both loaded from `assets/`.
 
 ## Run and check
 
-- Open `index.html` in a browser (works from `file://`; scripts are classic, not modules). The `anchor` scene fetches
-  its model, so it needs a web server (`python3 -m http.server`); from `file://` it says so and the other scenes still work.
+- Open `index.html` in a browser (works from `file://`; scripts are classic, not modules). The `anchor` and `office` scenes fetch
+  their models, so they need a web server (`python3 -m http.server`); from `file://` it says so and the other scenes still work.
 - `npm install && npm run shots` renders fixed views of every scene at phone size into `shots/`
   (gitignored; it serves the folder over http itself), runs the walk tests, and exits non-zero on any page or shader error. `npm run shots -- forest`
   renders only views whose name starts with `forest`; `npm run shots -- tests` runs only the walk tests.
   Set `CHROME_PATH` to use an installed Chrome. **Look at the PNGs after every visual change.**
-  (SwiftShader takes ~5 minutes for the full run.)
+  (SwiftShader takes ~6 minutes for the full run.)
 - `window.__dbg`: `S` (dev switches), `scenes` (by name), `setScene(sc)`, `setView('orbit'|'walk')`,
   `cam(theta, phi, radius)`, `player`, `walk(x, z, yaw, pitch, sceneName, y)`.
 - Walk tests (simulated, `player.update(1/60)` in a loop): the deck's steps/rails/edges, hatch down and
-  ladder up, the anchored ship's two ladders and bulwark, the lighthouse door → spiral stair → lamp room → gallery, and every scene's spawn + 20 s straight ahead.
+  ladder up, the anchored ship's two ladders and bulwark, every office room reachable from the spawn (flood fill), the lighthouse door → spiral stair → lamp room → gallery, and every scene's spawn + 20 s straight ahead.
 
 ## Deploy
 
@@ -35,9 +36,10 @@ Files load in this order and share the global scope (top-level `const`s are visi
 | `src/geometry.js` | Matrix helpers; shape builders (pos3, normal3, uv2): `box wedge cyl flatcyl sphere sector vault mound sling rock`; `rng(seed)` |
 | `src/shaders.js` | All GLSL: `SCENE_*` (lighting + surface dots), `SHADOW_*`, `POST_*` (sky, edges, palette) |
 | `src/renderer.js` | GL setup, programs, shadow map, MRT framebuffer, `resize()` |
-| `src/scene.js` | Scene builder (`beginScene`/`add`/`B`/`lantern`/`endScene`), `modelObject` + `heightField` for imported meshes, `WALK` + `walkBlocked`, and `DECK` |
+| `src/scene.js` | Scene builder (`beginScene`/`add`/`B`/`lantern`/`endScene`), `modelObject`/`modelBatch` + `heightField` for imported meshes, `WALK` + `walkBlocked`, and `DECK` |
 | `src/gltf.js` | `loadGLTF(url)`: meshes with node transforms applied, and each one's base-colour image URL |
 | `src/anchor.js` | The model scene: loads the ship on first open, builds its height map, ladders |
+| `src/office.js` | The office: floor plan helpers (`oWall`, `oPart`, `oLights`), furniture placement, the roaming lamps |
 | `src/hold.js` `lighthouse.js` `forest.js` `cathedral.js` `train.js` `ruins.js` | One scene each: geometry, lamps, `update(T)`, `floorAt`, `spawn` |
 | `src/walk.js` | First-person `player`, the deck's and hold's floors and the hatch/ladder between them, `scene` (the current one), touch and desktop controls |
 | `src/main.js` | `SCENES`, the scene switcher, orbit input, `setScene`/`setView`, the frame loop (shadow passes, scene pass, post pass) |
@@ -79,6 +81,7 @@ in it with a Walk/Orbit button; the rest are walked.
 | --- | --- | --- |
 | `deck` | the original | moonlit, one lantern; the open hatch leads to `hold` |
 | `anchor` | a real model, to compare with `deck` | see "The model scene" below |
+| `office` | flicker, darkness, many copies of models | see "The office" below |
 | `hold` | lantern light, hard swinging shadows | moonlight only through the hatch grating; the ladder leads up |
 | `lighthouse` | a moving light, a climb | spot lamp turning in the lamp room (lights the sea via the sea shader); 3.5-turn spiral stair: `floorAt` returns the highest floor within a step's reach of your height (several floors overlap); gallery door is opposite the stair well |
 | `forest` | many thin overlapping shapes | 85 conifers (seeded), campfire lamp with jitter + flicker, dappled moonlight |
@@ -168,6 +171,27 @@ that built this; see `assets/README.md`.
 - **Not done / first guesses:** no barrels or crates added as dressing (the model has its own deck furniture); the ship does
   not sway; no way below; shade/contrast per mesh (`ANCHOR_LOOK`), the lantern's spot on the mainmast and `shipDist` (foam
   outline) were set from headless stills only. Not yet tried on a phone: each lamp redraws the model six times a frame.
+
+## The office (`office`)
+
+The user asked for a spooky backrooms-style corporate office lit by flickering fluorescent lights, with walls and doors
+built in code, cubicles, Poly Haven office furniture, and about 30 seconds of unique walking. It is 40 x 30 m, walk only:
+reception (spawn), pillar hall, a dark room with one chair and a lit screen, a 24-bay cubicle farm, a corridor with
+three offices, meeting room, break room, a long corridor and a store room. The room list is at the top of `office.js`.
+
+- **Plan:** `oWall(axis, c, a, b, doors)` builds a wall with 1.2 m doorways (lintel, frame, leaf standing open) or closed
+  dummy doors, and records colliders in `OF.rects`. Furniture helpers (`desk`, `chair`, `mono`, `table`, `tv`, `plant`)
+  add a model copy and its collider; rect-collider models must sit at quarter turns. Models face +z at `ry` 0.
+- **Lights:** 37 fittings (`oLights`), each steady, flickering, dying or dead; `tubeOn(f, T)` is its brightness, and a lit
+  fitting's emissive tube is hidden (moved to y -50) while it is off. Only three lamps exist: every frame `update` puts
+  them at the three nearest working fittings and fades each by how close it is to being swapped out (`d4 - d`), so the
+  swap never pops. The result is that light follows you and rooms further off are black with white outlines. A lamp at
+  zero brightness skips its six shadow passes.
+- **Models:** `modelBatch` bakes all copies of a model into one buffer per texture and keeps each copy's vertex range and
+  bounding sphere (`parts`); lamp shadow passes draw only the copies within the lamp's range. `noSun` skips the sun's
+  shadow pass (there is no sun indoors). Textures were shrunk to 512 px; see `assets/README.md`.
+- **First guesses, from headless stills only:** lamp brightness (1.9) and wall/carpet shades, which fittings flicker, the
+  flicker timing (never seen in motion), door width against the 0.3 m body radius. Not yet tried on a phone.
 
 ## Ideas not yet tried
 

@@ -6,7 +6,7 @@ beginScene();
 add(box(600,0.2,600),[0,SEA-0.1,0],[0,0,0],1,{kind:1});
 B(0.9,0.06,0.06,-0.95,4.3,0,0.6);                                   // a bracket on the mainmast for the lantern
 const anchorLamp=lantern([-1.3,4.3,0],0.35,0,2.3,7);
-const ANCHOR=endScene({ name:'anchor', title:'At anchor', foam:3, sunAt:[1,8,0], sunHalf:16,
+const ANCHOR=endScene({ name:'anchor', title:'At anchor', loadingText:'loading the ship\u2026', foam:3, sunAt:[1,8,0], sunHalf:16,
   orbit:{ target:[1,8,0], radius:[38,28], theta:0.75, phi:1.25 }, spawn:{ x:-4.6, z:0.9, yaw:-Math.PI/2 } });
 ANCHOR.lamps.push(anchorLamp);
 // per mesh: base shade, texture contrast, and the height below which it counts for walking
