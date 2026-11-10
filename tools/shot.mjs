@@ -3,22 +3,34 @@
 //        npm run shots -- forest                 only views whose name starts with "forest" (skips the walk tests)
 //        npm run shots -- tests                  only the walk tests
 import { chromium } from 'playwright';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
 
-const page = new URL('../index.html', import.meta.url).href;
+// The page is served over http (not opened from file://) because the model scene fetches its files.
+const root = fileURLToPath(new URL('../', import.meta.url));
+const MIME = { html: 'text/html', js: 'text/javascript', json: 'application/json', gltf: 'model/gltf+json', jpg: 'image/jpeg', png: 'image/png' };
+const server = createServer((q, res) => {
+  const f = decodeURIComponent(new URL(q.url, 'http://x').pathname).replace(/^\/+/, '') || 'index.html';
+  try { if (f.includes('..')) throw 0; const body = readFileSync(root + f); res.writeHead(200, { 'content-type': MIME[f.split('.').pop()] || 'application/octet-stream' }); res.end(body); }
+  catch { res.writeHead(404); res.end(); }
+});
+await new Promise(ok => server.listen(0, '127.0.0.1', ok));
+const page = `http://127.0.0.1:${server.address().port}/index.html`;
 const out = fileURLToPath(new URL('../shots/', import.meta.url));
 mkdirSync(out, { recursive: true });
 
 // orbit views: [name, scene, theta, phi, radius]
 const VIEWS = [
   ['deck-wide', 'deck', 0.22, 1.2, 27], ['deck-shadow-side', 'deck', -1.05, 1.22, 27],
+  ['anchor-wide', 'anchor', 0.75, 1.25, 38], ['anchor-shadow-side', 'anchor', -1.05, 1.3, 36], ['anchor-close', 'anchor', 0.4, 1.0, 18],
   ['lighthouse-orbit', 'lighthouse', 0.6, 1.25, 62], ['lighthouse-low', 'lighthouse', 2.4, 1.45, 40],
   ['forest-orbit', 'forest', 0.5, 0.95, 40], ['ruins-orbit', 'ruins', 0.9, 1.15, 50], ['ruins-low', 'ruins', -0.7, 1.42, 34],
 ];
 // on foot: [name, scene, x, z, yaw, pitch, y]
 const WALKS = [
   ['deck-bow', 'deck', 10.5, 0, 1.571, 0], ['deck-quarterdeck', 'deck', -11, 3, -1.9, -0.1],
+  ['anchor-deck', 'anchor', -4.6, 0.9, -1.571, 0], ['anchor-aft', 'anchor', 3.0, -1.3, 1.571, 0.1], ['anchor-up', 'anchor', -3.6, -1.1, -1.2, 0.75], ['anchor-quarterdeck', 'anchor', -7.2, 0.9, -1.75, -0.2, 3.1],
   ['hold-arrive', 'hold', 4.0, -1.0, 1.271, 0], ['hold-hammocks', 'hold', -2, 1.6, 2.2, 0.05], ['hold-ladder', 'hold', 2.2, -2.4, -1.95, 0.3],
   ['lighthouse-door', 'lighthouse', 9.5, 0, 1.571, 0.25], ['lighthouse-stairs', 'lighthouse', 1.3, -0.9, 1.9, 0.35, 0], ['lighthouse-lamp', 'lighthouse', 1.2, -1.0, 1.0, 0.1, 16], ['lighthouse-gallery', 'lighthouse', 1.9, -2.35, -2.2, -0.2, 16],
   ['forest-path', 'forest', 24, 0, 1.571, 0], ['forest-fire', 'forest', 4.5, -1.5, 1.2, 0], ['forest-deep', 'forest', -14, -12, -2.2, 0.15],
@@ -40,7 +52,8 @@ await p.goto(page);
 await p.waitForTimeout(1500);
 if (await p.textContent('#err')) { console.log('error box:', await p.textContent('#err')); process.exit(1); }
 await p.evaluate(() => { __dbg.S.spin = false; });
-const snap = async name => { await p.evaluate(() => { document.getElementById('hint').style.display = 'none'; }); await p.waitForTimeout(700); await p.screenshot({ path: `${out}${name}.png` }); shots++; };
+await p.evaluate(() => __dbg.scenes.anchor.load()); // fetch the model before any shot or test needs it
+const snap = async name => { await p.evaluate(() => { document.getElementById('hint').style.display = 'none'; const f = document.getElementById('fade'); f.style.transition = 'none'; f.style.opacity = 0; }); await p.waitForTimeout(700); await p.screenshot({ path: `${out}${name}.png` }); shots++; };
 for (const [name, sc, t, ph, r] of VIEWS) { if (only && !name.startsWith(only)) continue;
   await p.evaluate(([sc, t, ph, r]) => { __dbg.setScene(__dbg.scenes[sc]); __dbg.setView('orbit'); __dbg.cam(t, ph, r); }, [sc, t, ph, r]); await snap(name); }
 for (const [name, sc, x, z, yaw, pitch, y] of WALKS) { if (only && !name.startsWith(only)) continue;
@@ -71,6 +84,9 @@ if (!only || only === 'tests') {
     for (const k of [1.3, 3.15]) for (let i = 0; i < 60 * 5; i++) { const gx = k * Math.cos(gd), gz = k * Math.sin(gd); if (Math.hypot(gx - P.x, gz - P.z) < 0.1) break; P.yaw = Math.atan2(-(gx - P.x), -(gz - P.z)); P.update(1 / 60); }
     const gallery = { r: +Math.hypot(P.x, P.z).toFixed(2), y: +P.y.toFixed(2) }; P.keys.clear();
     if (climbed < 15.95 || gallery.r < 2.6 || gallery.r > 3.31 || gallery.y < 15.9) bad.push({ lighthouse: { climbed, gallery } });
+    // the anchored ship: up the ladder to the quarterdeck, and not through the bulwark
+    const qd = run('anchor', -4.2, -0.65, 1.571, 4), fc = run('anchor', 2.6, -0.8, -1.571, 4), side = run('anchor', -2, 1, 3.1416, 4);
+    if (qd.y < 3 || qd.x > -5.6 || fc.y < 2.9 || fc.x < 4 || Math.abs(side.z) > 2.3 || side.y > 2.1) bad.push({ anchor: { qd, fc, side } });
     // every scene: the spawn is standable, and walking straight ahead for a while never leaves the floor
     for (const name in S) { const sp = S[name].spawn, r = run(name, sp.x, sp.z, sp.yaw, 20); if (r.floor === null) bad.push({ [name]: r }); }
     __dbg.setScene(S.deck); return bad;
@@ -79,6 +95,6 @@ if (!only || only === 'tests') {
 }
 const err = await p.textContent('#err');
 if (err) { errors++; console.log('error box:', err); }
-await browser.close();
+await browser.close(); server.close();
 console.log(errors ? 'FAILED' : `ok, wrote ${shots} shots to shots/`);
 process.exit(errors ? 1 : 0);

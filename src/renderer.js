@@ -34,6 +34,19 @@ function tex2d(w,h,ifmt,fmt,type,filter){ const t=gl.createTexture(); gl.bindTex
   gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,filter); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,filter);
   gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE); return t; }
 
+// A model's base-colour texture: repeating, mipmapped. `mean` is its average luminance, for the tone normalisation.
+function loadTexture(url){ return new Promise((ok,bad)=>{ const im=new Image();
+  im.onerror=()=>bad(new Error('could not load '+url));
+  im.onload=()=>{ const t=gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D,t);
+    gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,im); gl.generateMipmap(gl.TEXTURE_2D);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR_MIPMAP_LINEAR); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+    const c=document.createElement('canvas'); c.width=c.height=32; const x=c.getContext('2d'); x.drawImage(im,0,0,32,32);
+    const d=x.getImageData(0,0,32,32).data; let s=0; for(let i=0;i<d.length;i+=4) s+=0.299*d[i]+0.587*d[i+1]+0.114*d[i+2];
+    ok({t,mean:s/(32*32*255)}); };
+  im.src=url; }); }
+const whiteTex=tex2d(1,1,gl.RGBA8,gl.RGBA,gl.UNSIGNED_BYTE,gl.NEAREST);
+gl.texSubImage2D(gl.TEXTURE_2D,0,0,0,1,1,gl.RGBA,gl.UNSIGNED_BYTE,new Uint8Array([255,255,255,255]));
+
 const SM=2048;
 const shadowTex=tex2d(SM,SM,gl.DEPTH_COMPONENT24,gl.DEPTH_COMPONENT,gl.UNSIGNED_INT,gl.LINEAR);
 gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_COMPARE_MODE,gl.COMPARE_REF_TO_TEXTURE);
