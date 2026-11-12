@@ -17,6 +17,7 @@ uniform sampler2DShadow uShadow; uniform samplerCubeShadow uCube0, uCube1, uCube
 uniform vec3 uSunDir, uEye; uniform vec3 uLamp[3]; uniform vec2 uLampP[3]; uniform vec4 uLampD[3]; // lamp position; (intensity, range); spot (direction, cos of half-angle; -2 = shines all round)
 uniform float uPix, uD, uT, uSky, uSunI, uFill, uFoam, uFoamR, uEdge; uniform vec2 uCubeNF; // cube shadow near, far
 uniform float uFM; // 1: the Atkinson-like look (see surf)
+uniform float uGhost; // 1: this object is a ghost (its id goes in the top range, 65280 up, and the post pass dashes its outline)
 uniform sampler2D uTex; uniform vec2 uTone; // a model's base-colour texture; (1 / its mean luminance, contrast)
 #define CN uCubeNF.x
 #define CF uCubeNF.y
@@ -109,7 +110,8 @@ void main(){
   // view depth, log-encoded in 16 bits, for the post pass's depth outlines
   float e=clamp(log2(1.0+1.0/gl_FragCoord.w)/9.25,0.0,1.0)*65535.0;
   oLit=vec4(bit,lum,floor(e/256.0)/255.0,mod(floor(e),256.0)/255.0);
-  oEdge=vec4(vn.xy*0.5+0.5, floor(vA.x/256.0)/255.0, mod(vA.x,256.0)/255.0); // view normal xy + 16-bit object id
+  float id = uGhost>0.5 ? 65280.0+mod(vA.x,255.0) : vA.x;
+  oEdge=vec4(vn.xy*0.5+0.5, floor(id/256.0)/255.0, mod(id,256.0)/255.0); // view normal xy + 16-bit object id
 }`;
 
 const SHADOW_VS=`#version 300 es
@@ -166,12 +168,14 @@ void main(){
     // Imported meshes (ids from 32768) are too detailed for the normal rule: it only catches sharp creases there, and
     // depth steps do the rest. 1/z is linear on a plane, so its second difference is zero however steep the surface;
     // taking only the negative side puts the line on the nearer surface, one pixel wide.
-    bool mdl=c.b>=0.5; float crease = mdl ? MODEL_CREASE : 0.75;
+    bool mdl=c.b>=0.5&&c.b<0.999; float crease = mdl ? MODEL_CREASE : 0.75;
     if(!bg && !rb && dot(nrm(c),nrm(r))<crease) e=true;
     if(!bg && !ub && dot(nrm(c),nrm(u))<crease) e=true;
     if(mdl && !e){ float zc=invZ(L), zr=invZ(texture(tLit,vUv+vec2(px.x,0.0))), zl=invZ(texture(tLit,vUv-vec2(px.x,0.0))),
       zu=invZ(texture(tLit,vUv+vec2(0.0,px.y))), zd=invZ(texture(tLit,vUv-vec2(0.0,px.y)));
       if(min(zl+zr,zu+zd)-2.0*zc < -MODEL_DEPTH*zc) e=true; }
+    // a ghost's outline (on either side of it) is dashed: on for two pixels in every four along both axes
+    if(e && (c.b>0.999||r.b>0.999||u.b>0.999) && ((int(gl_FragCoord.x)+int(gl_FragCoord.y))&3)>1) e=false;
     if(e){ float l2=max(lum, max(texture(tLit,vUv+vec2(px.x,0.0)).g, texture(tLit,vUv+vec2(0.0,px.y)).g)); bit = l2>0.5 ? 0.0 : 1.0; }
   }
   o=vec4(mix(dark,light,bit),1.0);

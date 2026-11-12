@@ -90,8 +90,10 @@ function frame(now){
   const VP=M4.mul(M4.persp(FOV,W/H,walking||game?0.06:0.2,600),V);
 
   const drawScene=(uM,shadows,lamp)=>{
+    if(!shadows) gl.uniform1f(sceneProg.u.uGhost,0);
     gl.uniformMatrix4fv(uM,false,IDENT); gl.bindVertexArray(sc.statics.a); gl.drawArrays(gl.TRIANGLES,0,sc.statics.n);
     for(const o of sc.dyn){ if(shadows&&(o.noShadow||(shadows===2&&o.noLampShadow))) continue; gl.uniformMatrix4fv(uM,false,M4.trs(o.pos,o.rot));
+      if(!shadows) gl.uniform1f(sceneProg.u.uGhost,o.ghost?1:0);
       if(!shadows&&o.tex){ gl.bindTexture(gl.TEXTURE_2D,o.tex.t); gl.uniform2f(sceneProg.u.uTone,1/o.tex.mean,o.contrast); }
       if(lamp&&o.parts){ gl.bindVertexArray(o.g.a); const q=lamp.pos;   // a batch of model copies: only the ones this lamp can reach
         for(const p of o.parts) if(Math.hypot(p.c[0]-q[0],p.c[1]-q[1],p.c[2]-q[2])<lamp.range+p.r) gl.drawArrays(gl.TRIANGLES,p.first,p.count);

@@ -17,7 +17,7 @@ with Poly Haven furniture, both loaded from `assets/`.
 - `window.__dbg`: `S` (dev switches), `scenes` (by name), `setScene(sc)`, `setView('orbit'|'walk')`,
   `cam(theta, phi, radius)`, `player`, `walk(x, z, yaw, pitch, sceneName, y)`.
 - Walk tests (simulated, `player.update(1/60)` in a loop): the deck's steps/rails/edges, hatch down and
-  ladder up, the anchored ship's two ladders and bulwark, every office room reachable from the spawn (flood fill), tunnel run (a scripted player clears ten gates; no input crashes), bounce (a scripted player climbs eighteen levels, nothing is stacked below level 20, every platform has a follower within its phase's turn over 30 seeds, an underside knocks the ball back), the lighthouse door → spiral stair → lamp room → gallery, and every scene's spawn + 20 s straight ahead.
+  ladder up, the anchored ship's two ladders and bulwark, every office room reachable from the spawn (flood fill), tunnel run (a scripted player clears ten gates; no input crashes), bounce (a scripted player climbs eighteen levels, nothing is stacked below level 20, every platform has a follower within its phase's turn over 30 seeds, a ball rising under a platform passes through it), the lighthouse door → spiral stair → lamp room → gallery, and every scene's spawn + 20 s straight ahead.
 
 ## Deploy
 
@@ -249,8 +249,12 @@ on the game before adding the dither/colour stages.
 - **Line art in this renderer:** everything is emissive (white, unlit) on a `day` white sky, so only the outlines show; the
   ball is shade 0 (solid black). `sunDir` points down so the sky's sun ring is never in view.
 - **Rules, as agreed after the first mock-up:** the ball stays at the front of the tower and moves only vertically.
-  **Platforms are solid both ways** (the user disliked the ball passing up through floors): rising into an underside knocks
-  the ball back down, so you turn a gap over the ball to go up and a platform under it to land. Any landing sets the upward
+  **Ghost platforms:** a platform is a ghost while it is above the ball (dashed outline; the ball rises straight through
+  it) and turns solid once the ball's underside is above its top, so it can be landed on. History: the first mock-up let
+  the ball pass up through plain platforms, which the user found "magic"; making them solid both ways was then
+  frustrating (bumping undersides); ghosts were the user's idea to make passing through visibly part of the world.
+  How it's drawn: a dyn object with `o.ghost` sets `uGhost`, which puts its id in the top range (65280 up); the post pass
+  dashes any outline touching a ghost pixel (excluded from the model outline rules). Any landing sets the upward
   speed to `BO.JUMP` (apex 3 m) whatever the fall; levels are `BO.SP` = 2 m apart, so each bounce can gain one level and
   the ball's top stops short of the level after that. Level 0 is a full ring. The view only moves up; falling 7.5 m below
   it ends the run. Score is the highest level landed on. The user confirmed the **fixed bounce** is what they meant by
