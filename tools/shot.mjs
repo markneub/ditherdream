@@ -118,6 +118,14 @@ if (!only || only === 'tests') {
       // every platform has a follower on the next level within its phase's turn, edge to edge
       const far = [], seed0 = BO.seed; for (let sd = 1; sd <= 30; sd++) { BO.seed = sd; BO.levels = []; for (let lv = 1; lv < 45; lv++) { const T = BO.PHASES[Math.min(BO.PHASES.length - 1, boPhase(lv + 1))].turn + 1e-6;
         for (const p of boLevel(lv)) if (!boLevel(lv + 1).some(q => boMod(q.a - p.a - BO.WID[p.w]) <= T || boMod(p.a - q.a - BO.WID[q.w]) <= T)) far.push(sd + ':' + lv); } } BO.seed = seed0; BO.levels = [];
+      // at every landing a drawn platform is under the ball (within the 0.06 rad landing tolerance); a bot that often steers badly
+      const air = []; for (let run = 0; run < 12; run++) { __dbg.setScene(S.bounce); const rnd = rng(run + 7);
+        for (let i = 0; i < 60 * 60 && BS.state === 'run'; i++) {
+          if (BS.vy < 0 && rnd() < 0.08) { const lv = Math.floor((BS.y - BO.BALL) / BO.SP + 1e-6); if (lv > 0) { const ps = boLevel(lv), q = ps[Math.floor(rnd() * ps.length)]; BS.ang = BO.WID[q.w] * rnd() - Math.PI / 2 - q.a + (rnd() < 0.3 ? 0.4 : 0); } }
+          const vy0 = BS.vy; S.bounce.update(0, 1 / 60); if (!(vy0 < 0 && BS.vy > 0)) continue;
+          const lv = Math.round((BS.y - BO.BALL) / BO.SP); if (lv === 0) continue;
+          if (!BO.pool.some((list, w) => list.some(o => Math.abs(o.pos[1] - (lv * BO.SP - BO.TH / 2)) < 1e-6 && (boMod(Math.PI / 2 + o.rot[1]) <= BO.WID[w] + 0.061 || boMod(Math.PI / 2 + o.rot[1]) >= BTAU - 0.061)))) air.push(run + ':' + lv); } }
+      if (air.length) bad.push({ bounce: { landedOnAir: air.slice(0, 10) } });
       if (climbed < 18 || stacked.length || far.length || peak < BO.BALL + 2.9) bad.push({ bounce: { climbed, stacked: [...new Set(stacked)], far, peak } }); }
     // every scene: the spawn is standable, and walking straight ahead for a while never leaves the floor
     for (const name in S) { const sp = S[name].spawn, r = run(name, sp.x, sp.z, sp.yaw, 20); if (r.floor === null) bad.push({ [name]: r }); }
