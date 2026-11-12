@@ -123,6 +123,7 @@ function frame(now){
   gl.uniform3fv(u['uLamp[0]'],lp); gl.uniform2fv(u['uLampP[0]'],lq); gl.uniform4fv(u['uLampD[0]'],ld);
   gl.uniform2f(u.uCubeNF,CUBE_NEAR,sc.cubeFar);
   gl.uniform1f(u.uSky,sc.sky); gl.uniform1f(u.uFill,sc.fill); gl.uniform1f(u.uSunI,sc.sunI); gl.uniform1f(u.uT,T);
+  gl.uniform3fv(u.uFade,sc.fade||[0,0,0]);
   gl.uniform1f(u.uEdge,sc.edge); gl.uniform1f(u.uFoam,sc.foam); gl.uniform1f(u.uFoamR,sc.foamR);
   gl.uniform1f(u.uPix,2*Math.tan(FOV/2)/H); gl.uniform1f(u.uD,S.mode===2?ATK_SPACING:DOT_SPACING); gl.uniform1f(u.uFM,S.mode===2?1:0);
   gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D,shadowTex); gl.uniform1i(u.uShadow,0);
@@ -141,6 +142,7 @@ function frame(now){
   gl.uniformMatrix3fv(p.camRot,false,new Float32Array([V[0],V[4],V[8], V[1],V[5],V[9], V[2],V[6],V[10]]));
   gl.uniform1f(p.mode,S.mode); gl.uniform1f(p.edges,S.edges?1:0); gl.uniform1f(p.raw,S.raw?1:0); gl.uniform1f(p.day,sc.day?1:0);
   gl.uniform3fv(p.dark,sc.invert?LIGHT:DARK); gl.uniform3fv(p.light,sc.invert?DARK:LIGHT);   // a scene can swap the two colours
+  gl.uniform2fv(p.uDof,sc.dof||[1,0]);
   gl.uniform3fv(p.uMoon,sc.sunDir); gl.uniform3fv(p.uMoon2,sc.moon2);
   gl.bindVertexArray(quad); gl.drawArrays(gl.TRIANGLES,0,3);
   gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D,null);

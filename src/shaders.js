@@ -17,6 +17,7 @@ uniform sampler2DShadow uShadow; uniform samplerCubeShadow uCube0, uCube1, uCube
 uniform vec3 uSunDir, uEye; uniform vec3 uLamp[3]; uniform vec2 uLampP[3]; uniform vec4 uLampD[3]; // lamp position; (intensity, range); spot (direction, cos of half-angle; -2 = shines all round)
 uniform float uPix, uD, uT, uSky, uSunI, uFill, uFoam, uFoamR, uEdge; uniform vec2 uCubeNF; // cube shadow near, far
 uniform float uFM; // 1: the Atkinson-like look (see surf)
+uniform vec3 uFade; // fade to white with distance: (start, end, how far towards white; 0 = off)
 uniform float uGhost; // 1: this object is a ghost (its id goes in the top range, 65280 up, and the post pass dashes its outline)
 uniform sampler2D uTex; uniform vec2 uTone; // a model's base-colour texture; (1 / its mean luminance, contrast)
 #define CN uCubeNF.x
@@ -101,6 +102,8 @@ void main(){
     lum=smoothstep(0.0,1.0,clamp((lum-0.03)/0.9,0.0,1.0));
   }
   lum=mix(lum,1.0,vA.z);
+  if(uFade.z>0.0) lum=mix(lum,1.0,uFade.z*smoothstep(uFade.x,uFade.y,dist));
+  if(uGhost>0.5) lum=mix(lum,1.0,0.7);                // ghosts are pale
   if(uFM>0.5) lum=clamp((lum-0.5)*1.3+0.5,0.0,1.0); // Atkinson drops a quarter of the error: highlights blow out, shadows crush
   float cs=abs(dot(n,Vd));
   float sigma=dist*uPix/sqrt(max(cs,0.1));
@@ -126,7 +129,7 @@ in vec3 aP; out vec2 vUv; void main(){ vUv=aP.xy*0.5+0.5; gl_Position=vec4(aP.xy
 const POST_FS=`#version 300 es
 precision highp float; precision highp int;
 uniform sampler2D tLit, tEdge;
-uniform vec2 res; uniform float tanHalf, aspect, mode, edges, raw, day;
+uniform vec2 res, uDof; uniform float tanHalf, aspect, mode, edges, raw, day;
 uniform mat3 camRot; uniform vec3 dark, light, uMoon, uMoon2;
 #define MODEL_CREASE 0.2
 #define MODEL_DEPTH 0.03
@@ -136,7 +139,14 @@ float hash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
 vec3 nrm(vec4 c){ vec2 n=c.rg*2.0-1.0; return vec3(n,sqrt(max(0.0,1.0-dot(n,n)))); }
 float invZ(vec4 l){ return 1.0/(exp2((l.b*65280.0+l.a*255.0)/65535.0*9.25)-1.0+1e-4); } // 1 / view depth: linear across the screen on any plane
 void main(){
-  vec4 L=texture(tLit,vUv), c=texture(tEdge,vUv);
+  // Depth of field: a pixel further away than the focus distance reads the picture from a jittered spot nearby (a fixed
+  // per-pixel random offset, as wide as its circle of confusion), so out-of-focus things break up into a grainy blur that
+  // holds still when nothing moves. uDof = (focus distance, strength in pixels per unit of 1/z; 0 = off).
+  vec2 uv=vUv;
+  vec4 c0=texture(tEdge,vUv);
+  if(uDof.y>0.0 && (c0.b>0.0||c0.a>0.0)){ float coc=min(3.0, uDof.y*max(0.0, 1.0/uDof.x-invZ(texture(tLit,vUv))));   // (not the sky)
+    if(coc>0.5){ vec2 h=vec2(hash(floor(gl_FragCoord.xy)), hash(floor(gl_FragCoord.xy)+31.7))-0.5; uv+=floor(h*2.0*coc+0.5)/res; } }
+  vec4 L=texture(tLit,uv), c=texture(tEdge,uv);
   float lum=L.g, bit;
   bool bg = c.b==0.0 && c.a==0.0;
   if(bg && day>0.5){
@@ -162,7 +172,7 @@ void main(){
   if(raw>0.5){ o=vec4(mix(dark,light,lum),1.0); return; }
   if(edges>0.5){
     vec2 px=1.0/res;
-    vec4 r=texture(tEdge,vUv+vec2(px.x,0.0)), u=texture(tEdge,vUv+vec2(0.0,px.y));
+    vec4 r=texture(tEdge,uv+vec2(px.x,0.0)), u=texture(tEdge,uv+vec2(0.0,px.y));
     bool e=abs(c.a-r.a)+abs(c.b-r.b)>0.002 || abs(c.a-u.a)+abs(c.b-u.b)>0.002;
     bool rb=r.b==0.0&&r.a==0.0, ub=u.b==0.0&&u.a==0.0;
     // Imported meshes (ids from 32768) are too detailed for the normal rule: it only catches sharp creases there, and
@@ -171,12 +181,12 @@ void main(){
     bool mdl=c.b>=0.5&&c.b<0.999; float crease = mdl ? MODEL_CREASE : 0.75;
     if(!bg && !rb && dot(nrm(c),nrm(r))<crease) e=true;
     if(!bg && !ub && dot(nrm(c),nrm(u))<crease) e=true;
-    if(mdl && !e){ float zc=invZ(L), zr=invZ(texture(tLit,vUv+vec2(px.x,0.0))), zl=invZ(texture(tLit,vUv-vec2(px.x,0.0))),
-      zu=invZ(texture(tLit,vUv+vec2(0.0,px.y))), zd=invZ(texture(tLit,vUv-vec2(0.0,px.y)));
+    if(mdl && !e){ float zc=invZ(L), zr=invZ(texture(tLit,uv+vec2(px.x,0.0))), zl=invZ(texture(tLit,uv-vec2(px.x,0.0))),
+      zu=invZ(texture(tLit,uv+vec2(0.0,px.y))), zd=invZ(texture(tLit,uv-vec2(0.0,px.y)));
       if(min(zl+zr,zu+zd)-2.0*zc < -MODEL_DEPTH*zc) e=true; }
     // a ghost's outline (on either side of it) is dashed: on for two pixels in every four along both axes
     if(e && (c.b>0.999||r.b>0.999||u.b>0.999) && ((int(gl_FragCoord.x)+int(gl_FragCoord.y))&3)>1) e=false;
-    if(e){ float l2=max(lum, max(texture(tLit,vUv+vec2(px.x,0.0)).g, texture(tLit,vUv+vec2(0.0,px.y)).g)); bit = l2>0.5 ? 0.0 : 1.0; }
+    if(e){ float l2=max(lum, max(texture(tLit,uv+vec2(px.x,0.0)).g, texture(tLit,uv+vec2(0.0,px.y)).g)); bit = l2>0.5 ? 0.0 : 1.0; }
   }
   o=vec4(mix(dark,light,bit),1.0);
 }`;

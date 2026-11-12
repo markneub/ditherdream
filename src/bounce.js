@@ -1,4 +1,4 @@
-// ---------- bounce: a ball climbing an invisible tower (line-art mock-up) ----------
+// ---------- bounce: a ball climbing an invisible tower  ----------
 // The user's design: platforms are arcs on the surface of a cylinder you can't see. The ball stays at the front and only
 // moves up and down; swiping turns the tower so a platform is under the ball when it comes down. Every landing throws the
 // ball up 3 m whatever height it fell from, and the levels are 2 m apart, so each bounce can gain one level (and the ball's
@@ -6,9 +6,10 @@
 // and the ball rises straight through it) and turns solid once the ball's underside is above its top, so it can be landed
 // on. (Solid-both-ways was tried and the user found bumping into undersides frustrating.) The climb is in phases of ten levels (BO.PHASES): each phase sets how the
 // levels are laid out, and is where new kinds of object and the colour/dither stages will hang.
-// This first version is a mock-up to agree the game: plain line art (everything white and unlit on a white sky, so only
-// the outlines show; the ball is solid black). The dither and colour effects come later.
-const BO={ R0:2.4, R1:3.6, TH:0.22, SP:2.0, G:22, JUMP:Math.sqrt(2*22*3.0), BALL:0.3, WID:[1.15,0.9,0.68,0.5], pool:[], seed:1, levels:[], PHASE:10 };
+// Drawn in the dither style: white platforms lit by a high sun on a white sky, with dotted shading on their sides, the
+// ball's shadow on the platforms below, ghosts pale with dashed outlines, platforms fading towards white and breaking up
+// (depth of field) the further they are behind the ball, and a puff of dust where the ball lands.
+const BO={ SHADE:0.94, R0:2.4, R1:3.6, TH:0.22, SP:2.0, G:22, JUMP:Math.sqrt(2*22*3.0), BALL:0.3, WID:[1.15,0.9,0.68,0.5], pool:[], seed:1, levels:[], PHASE:10 };
 // One entry per phase (ten levels); the last repeats. n: arcs per level (at most); wid: which BO.WID widths it may use;
 // turn: the furthest (radians, edge to edge) from a platform to its follower on the next level;
 BO.PHASES=[ {n:2,wid:[0,1],turn:0.5}, {n:2,wid:[1,2],turn:0.75}, {n:2,wid:[1,2,3],turn:0.95}, {n:2,wid:[2,3],turn:1.15}, {n:2,wid:[3],turn:1.35} ];
@@ -16,13 +17,14 @@ BO.LAND=0.06; BO.CLEAR=0.16;   // landing tolerance past a platform's end; least
 const boPhase=lv=>Math.floor((Math.max(1,lv)-1)/BO.PHASE);
 const BS={ y:0, vy:0, ang:0, spin:0, camY:0, top:0, score:0, best:0, state:'run', deadT:0, keys:new Set(), ptr:null };
 beginScene();
-add(sector(BO.R0,BO.R1,BO.TH,0,Math.PI*2,48),[0,-BO.TH/2,0],[0,0,0],1,{emit:1,dyn:true});            // the floor: a full ring
+add(sector(BO.R0,BO.R1,BO.TH,0,Math.PI*2,48),[0,-BO.TH/2,0],[0,0,0],BO.SHADE,{dyn:true});            // the floor: a full ring
 for(const w of BO.WID){ const g=sector(BO.R0,BO.R1,BO.TH,0,w,Math.max(4,Math.round(w*10)));       // platforms, pooled by width
-  BO.pool.push(Array.from({length:22},()=>add(g.slice(),[0,-1000,0],[0,0,0],1,{emit:1,dyn:true}))); }
+  BO.pool.push(Array.from({length:22},()=>add(g.slice(),[0,-1000,0],[0,0,0],BO.SHADE,{dyn:true}))); }
 BO.pool.forEach(list=>list.forEach(o=>{ o.ghost=false; }));
-BO.hoops=[0,1].map(()=>add(sector(BO.R1+0.5,BO.R1+0.58,0.05,0,Math.PI*2,48),[0,-1000,0],[0,0,0],1,{emit:1,dyn:true}));   // a thin hoop marks each new phase
-const boBall=add(sphere(BO.BALL,20,12),[0,0,0],[0,0,0],0,{dyn:true,noShadow:true});
-const BOUNCE=endScene({ name:'bounce', title:'Bounce (mock-up)', day:true, sky:0, sunI:0, noSun:true, sunDir:[0.05,-1,0.05], spawn:{x:0,z:0,yaw:0},
+// dust: small specks, pooled; each landing throws a dozen of them out along the platform top
+BO.dust=[0.06,0.1].flatMap(s=>Array.from({length:30},()=>({o:add(box(s,s,s),[0,-1000,0],[0,0,0],0.3,{dyn:true,noShadow:true}),life:0,p:[0,0,0],v:[0,0,0],floor:0})));
+const boBall=add(sphere(BO.BALL,20,12),[0,0,0],[0,0,0],0.16,{dyn:true,noLampShadow:true});
+const BOUNCE=endScene({ name:'bounce', title:'Bounce', day:true, sky:3.2, sunI:1.25, sunDir:[0.45,1,0.75], sunHalf:9, spawn:{x:0,z:0,yaw:0},
   hint:'swipe left or right to turn the tower<br>rise through the gaps, land on the platforms' });
 BOUNCE.floorAt=()=>0;
 // The platforms of level k (k >= 1): [{a: start angle, w: index into BO.WID}]. Levels are made in order and kept, because
@@ -51,6 +53,11 @@ function boLevel(k){ const L=BO.levels;
   return L[k]; }
 // Is a platform under (or over) the ball? The ball sits at the front (world angle pi/2 in sector()'s x-to-z convention).
 function boUnder(p,m=BO.LAND){ const t=boMod(Math.PI/2+BS.ang+p.a); return t<=BO.WID[p.w]+m||t>=BTAU-m; }
+BO.DOF=220;   // depth of field strength: blur in pixels per unit of 1/z behind the focus, 1.5 m past the ball (about 2 px at the back of the tower)
+// A puff of dust where the ball lands: specks thrown out and up along the platform top, settling on it, gone in half a second.
+function boDust(y){ const rnd=Math.random, z0=(BO.R0+BO.R1)/2; let n=0;
+  for(const d of BO.dust){ if(d.life>0||n>=14) continue; n++; const a=rnd()*Math.PI*2, sp=0.6+rnd()*1.6;
+    d.p=[Math.cos(a)*0.15, y+0.03, z0+Math.sin(a)*0.15]; d.v=[Math.cos(a)*sp, 0.6+rnd()*1.4, Math.sin(a)*sp*0.6]; d.floor=y+0.03; d.life=0.3+rnd()*0.35; } }
 function boReset(){ Object.assign(BS,{y:BO.BALL,vy:BO.JUMP,ang:0,spin:0,camY:0,top:0,score:0,state:'run'}); BO.seed=(Date.now()&0xffff)+1; BO.levels=[];
   const p1=boLevel(1)[0]; BS.ang=BO.WID[p1.w]+0.3-Math.PI/2-p1.a;                    // start under a gap in level 1, just past a platform's end
   boHud(); }
@@ -65,7 +72,7 @@ BOUNCE.update=(T,dt)=>{
     const y0=BS.y; BS.vy-=BO.G*dt; BS.y+=BS.vy*dt;
     if(BS.vy<=0){                                                                   // falling: did the ball's underside cross a platform top? (rising, it passes through)
       const k0=Math.floor((y0-BO.BALL)/BO.SP+1e-6), k1=Math.floor((BS.y-BO.BALL)/BO.SP+1e-6);
-      for(let lv=k0;lv>k1&&lv>=0;lv--) if(lv===0||boLevel(lv).some(p=>boUnder(p))){ BS.y=lv*BO.SP+BO.BALL; BS.vy=BO.JUMP; BS.top=lv;
+      for(let lv=k0;lv>k1&&lv>=0;lv--) if(lv===0||boLevel(lv).some(p=>boUnder(p))){ BS.y=lv*BO.SP+BO.BALL; BS.vy=BO.JUMP; BS.top=lv; boDust(lv*BO.SP);
         if(lv>BS.score){ BS.score=lv; boHud(); } break; } }
     BS.camY+=(Math.max(BS.camY,BS.top*BO.SP)-BS.camY)*Math.min(1,dt*3);            // the view only ever moves up
     // the run ends when the ball drops out of the bottom of the view, so it never bounces off something you can't see
@@ -75,7 +82,14 @@ BOUNCE.update=(T,dt)=>{
   const used=BO.WID.map(()=>0), kc=Math.round(BS.camY/BO.SP);
   for(let lv=Math.max(1,kc-4);lv<=kc+8;lv++) for(const p of boLevel(lv)){ const o=BO.pool[p.w][used[p.w]++]; if(!o) continue; o.pos=[0,lv*BO.SP-BO.TH/2,0]; o.rot=[0,BS.ang+p.a,0]; o.ghost=BS.y-BO.BALL<lv*BO.SP-1e-3; }
   BO.pool.forEach((list,i)=>{ for(let j=used[i];j<list.length;j++) list[j].pos=[0,-1000,0]; });
-  const ph0=Math.max(1,Math.round(BS.camY/BO.SP/BO.PHASE)); BO.hoops.forEach((o,i)=>{ o.pos=[0,(ph0+i)*BO.PHASE*BO.SP+BO.SP-BO.TH/2,0]; });   // at levels 11, 21, ...
+  for(const d of BO.dust){ if(d.life<=0) continue; d.life-=dt; if(d.life<=0){ d.o.pos=[0,-1000,0]; continue; }
+    d.v[1]-=7*dt; const k=Math.exp(-dt*3); d.v[0]*=k; d.v[2]*=k; for(let i=0;i<3;i++) d.p[i]+=d.v[i]*dt;
+    if(d.p[1]<d.floor){ d.p[1]=d.floor; d.v[1]=0; d.v[0]*=0.5; d.v[2]*=0.5; } d.o.pos=d.p.slice(); d.o.rot=[d.life*7,d.life*5,0]; }
+  // the sun's shadow box follows the view; depth of field focuses on the ball; far platforms fade towards white
+  const c=BOUNCE.camera(), at=[0,BS.camY+3,0], sd=BOUNCE.sunDir, h=BOUNCE.sunHalf;
+  BOUNCE.sunVP=M4.mul(M4.ortho(-h,h,-h,h,5,115),M4.lookAt(at.map((v,i)=>v+sd[i]*60),at,[0,1,0]));
+  const fz=Math.hypot(c.eye[1]-BS.y, c.eye[2]-(BO.R0+BO.R1)/2);
+  BOUNCE.dof=[fz+1.5,BO.DOF]; BOUNCE.fade=[fz+1.5,fz+9,0.6];
   boBall.pos=[0,BS.y,(BO.R0+BO.R1)/2];
 };
 // seen from the side and a little above, through a long lens so the tower looks nearly flat-on
