@@ -2,8 +2,9 @@
 // The user's design: platforms are arcs on the surface of a cylinder you can't see. The ball stays at the front and only
 // moves up and down; swiping turns the tower so a platform is under the ball when it comes down. Every landing throws the
 // ball up 3 m whatever height it fell from, and the levels are 2 m apart, so each bounce can gain one level (and the ball's
-// top stops short of the level after that). Platforms are solid both ways: rising into the underside of one knocks the
-// ball back down, so you climb through the gaps. The climb is in phases of ten levels (BO.PHASES): each phase sets how the
+// top stops short of the level after that). A platform is a ghost while it is above the ball (drawn with a dashed outline,
+// and the ball rises straight through it) and turns solid once the ball's underside is above its top, so it can be landed
+// on. (Solid-both-ways was tried and the user found bumping into undersides frustrating.) The climb is in phases of ten levels (BO.PHASES): each phase sets how the
 // levels are laid out, and is where new kinds of object and the colour/dither stages will hang.
 // This first version is a mock-up to agree the game: plain line art (everything white and unlit on a white sky, so only
 // the outlines show; the ball is solid black). The dither and colour effects come later.
@@ -18,6 +19,7 @@ beginScene();
 add(sector(BO.R0,BO.R1,BO.TH,0,Math.PI*2,48),[0,-BO.TH/2,0],[0,0,0],1,{emit:1,dyn:true});            // the floor: a full ring
 for(const w of BO.WID){ const g=sector(BO.R0,BO.R1,BO.TH,0,w,Math.max(4,Math.round(w*10)));       // platforms, pooled by width
   BO.pool.push(Array.from({length:22},()=>add(g.slice(),[0,-1000,0],[0,0,0],1,{emit:1,dyn:true}))); }
+BO.pool.forEach(list=>list.forEach(o=>{ o.ghost=false; }));
 BO.hoops=[0,1].map(()=>add(sector(BO.R1+0.5,BO.R1+0.58,0.05,0,Math.PI*2,48),[0,-1000,0],[0,0,0],1,{emit:1,dyn:true}));   // a thin hoop marks each new phase
 const boBall=add(sphere(BO.BALL,20,12),[0,0,0],[0,0,0],0,{dyn:true,noShadow:true});
 const BOUNCE=endScene({ name:'bounce', title:'Bounce (mock-up)', day:true, sky:0, sunI:0, noSun:true, sunDir:[0.05,-1,0.05], spawn:{x:0,z:0,yaw:0},
@@ -66,10 +68,7 @@ BOUNCE.update=(T,dt)=>{
     const k=BS.keys; BS.ang+=((k.has('ArrowRight')||k.has('KeyD')?1:0)-(k.has('ArrowLeft')||k.has('KeyA')?1:0))*2.6*dt;
     if(!BS.ptr){ BS.ang+=BS.spin*dt; BS.spin*=Math.exp(-dt*5); }                    // a released swipe glides on briefly
     const y0=BS.y; BS.vy-=BO.G*dt; BS.y+=BS.vy*dt;
-    if(BS.vy>0){                                                                    // rising: did the ball's top meet the underside of a platform?
-      const h=BO.BALL+BO.TH, k0=Math.ceil((y0+h)/BO.SP-1e-6), k1=Math.floor((BS.y+h)/BO.SP);
-      for(let lv=Math.max(1,k0);lv<=k1;lv++) if(boLevel(lv).some(p=>boUnder(p,0.02))){ BS.y=lv*BO.SP-h; BS.vy=-BS.vy*0.35; break; } }
-    else {                                                                          // falling: did the ball's underside cross a platform top?
+    if(BS.vy<=0){                                                                   // falling: did the ball's underside cross a platform top? (rising, it passes through)
       const k0=Math.floor((y0-BO.BALL)/BO.SP+1e-6), k1=Math.floor((BS.y-BO.BALL)/BO.SP+1e-6);
       for(let lv=k0;lv>k1&&lv>=0;lv--) if(lv===0||boLevel(lv).some(boUnder)){ BS.y=lv*BO.SP+BO.BALL; BS.vy=BO.JUMP; BS.top=lv;
         if(lv>BS.score){ BS.score=lv; boHud(); } break; } }
@@ -77,7 +76,7 @@ BOUNCE.update=(T,dt)=>{
     if(BS.y<BS.camY-7.5){ BS.state='dead'; BS.deadT=performance.now(); BS.best=Math.max(BS.best,BS.score); boHud(); } }
   // put pooled platforms on the levels in view, turned with the tower
   const used=BO.WID.map(()=>0), kc=Math.round(BS.camY/BO.SP);
-  for(let lv=Math.max(1,kc-4);lv<=kc+8;lv++) for(const p of boLevel(lv)){ const o=BO.pool[p.w][used[p.w]++]; if(!o) continue; o.pos=[0,lv*BO.SP-BO.TH/2,0]; o.rot=[0,BS.ang+p.a,0]; }
+  for(let lv=Math.max(1,kc-4);lv<=kc+8;lv++) for(const p of boLevel(lv)){ const o=BO.pool[p.w][used[p.w]++]; if(!o) continue; o.pos=[0,lv*BO.SP-BO.TH/2,0]; o.rot=[0,BS.ang+p.a,0]; o.ghost=BS.y-BO.BALL<lv*BO.SP-1e-3; }
   BO.pool.forEach((list,i)=>{ for(let j=used[i];j<list.length;j++) list[j].pos=[0,-1000,0]; });
   const ph0=Math.max(1,Math.round(BS.camY/BO.SP/BO.PHASE)); BO.hoops.forEach((o,i)=>{ o.pos=[0,(ph0+i)*BO.PHASE*BO.SP+BO.SP-BO.TH/2,0]; });   // at levels 11, 21, ...
   boBall.pos=[0,BS.y,(BO.R0+BO.R1)/2];
