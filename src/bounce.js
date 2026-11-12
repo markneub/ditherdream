@@ -70,7 +70,7 @@ BOUNCE.update=(T,dt)=>{
     const y0=BS.y; BS.vy-=BO.G*dt; BS.y+=BS.vy*dt;
     if(BS.vy<=0){                                                                   // falling: did the ball's underside cross a platform top? (rising, it passes through)
       const k0=Math.floor((y0-BO.BALL)/BO.SP+1e-6), k1=Math.floor((BS.y-BO.BALL)/BO.SP+1e-6);
-      for(let lv=k0;lv>k1&&lv>=0;lv--) if(lv===0||boLevel(lv).some(boUnder)){ BS.y=lv*BO.SP+BO.BALL; BS.vy=BO.JUMP; BS.top=lv;
+      for(let lv=k0;lv>k1&&lv>=0;lv--) if(lv===0||boLevel(lv).some(p=>boUnder(p))){ BS.y=lv*BO.SP+BO.BALL; BS.vy=BO.JUMP; BS.top=lv;
         if(lv>BS.score){ BS.score=lv; boHud(); } break; } }
     BS.camY+=(Math.max(BS.camY,BS.top*BO.SP)-BS.camY)*Math.min(1,dt*3);            // the view only ever moves up
     if(BS.y<BS.camY-7.5){ BS.state='dead'; BS.deadT=performance.now(); BS.best=Math.max(BS.best,BS.score); boHud(); } }
