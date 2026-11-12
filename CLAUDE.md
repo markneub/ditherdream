@@ -17,7 +17,7 @@ with Poly Haven furniture, both loaded from `assets/`.
 - `window.__dbg`: `S` (dev switches), `scenes` (by name), `setScene(sc)`, `setView('orbit'|'walk')`,
   `cam(theta, phi, radius)`, `player`, `walk(x, z, yaw, pitch, sceneName, y)`.
 - Walk tests (simulated, `player.update(1/60)` in a loop): the deck's steps/rails/edges, hatch down and
-  ladder up, the anchored ship's two ladders and bulwark, every office room reachable from the spawn (flood fill), tunnel run (a scripted player clears ten gates; no input crashes), bounce (a scripted player climbs eighteen levels, nothing is stacked below level 20, an underside knocks the ball back), the lighthouse door → spiral stair → lamp room → gallery, and every scene's spawn + 20 s straight ahead.
+  ladder up, the anchored ship's two ladders and bulwark, every office room reachable from the spawn (flood fill), tunnel run (a scripted player clears ten gates; no input crashes), bounce (a scripted player climbs eighteen levels, nothing is stacked below level 20, every platform has a follower within its phase's turn over 30 seeds, an underside knocks the ball back), the lighthouse door → spiral stair → lamp room → gallery, and every scene's spawn + 20 s straight ahead.
 
 ## Deploy
 
@@ -258,9 +258,12 @@ on the game before adding the dither/colour stages.
 - **Phases:** ten levels each (`BO.PHASE`), described by `BO.PHASES` (arcs per level, allowed widths, `stack`); the last
   entry repeats. The user wants phases to be where **new kinds of object and the colour/dither effects** come in. A thin
   hoop marks the first level of each new phase and the HUD shows the phase number.
-- **No platform directly over another until level 20** (the user's rule): in phases with `stack:false`, `boLevel` puts each
-  level's arcs in the gaps of the level below, so it builds levels in order and caches them (`BO.levels`). From level 21
-  arcs may overlap, but some part of the level below is always left open above.
+- **Short turns** (the user found low levels needed too much turning): every platform gets a *follower* on the next level
+  whose near edge is at most the phase's `turn` (radians, edge to edge) round from its own edge, either way. Phase 1 is
+  0.5 rad, rising to 1.35 by phase 5. Widths `BO.WID` were also narrowed at their request (1.15 down to 0.5 rad).
+- **No platform directly over another until level 20** (the user's rule): phases with `stack:false` reject followers over
+  any platform below. `boLevel` builds levels in order and caches them (`BO.levels`), retrying a level until every platform
+  below has a follower. From level 21 followers may overlap, but some part of every platform below stays open above.
 - Platforms are pooled dyn objects per arc width (`sector()` geometry), placed on the levels in view each frame.
 - Drag turns the tower (with a short glide on release); arrows / A D on desktop.
 

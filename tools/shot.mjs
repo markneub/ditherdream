@@ -114,7 +114,10 @@ if (!only || only === 'tests') {
         S.bounce.update(0, 1 / 60); }
       const climbed = BS.score, stacked = []; for (let lv = 2; lv <= 20; lv++) for (const p of boLevel(lv)) for (const q of boLevel(lv - 1)) for (let t = 0; t <= BO.WID[p.w]; t += 0.05) { const d = boMod(p.a + t - q.a); if (d < BO.WID[q.w]) stacked.push(lv); }
       __dbg.setScene(S.bounce); const p1 = boLevel(1)[0]; BS.ang = BO.WID[p1.w] / 2 - Math.PI / 2 - p1.a; let peak = 0; for (let i = 0; i < 90; i++) { S.bounce.update(0, 1 / 60); peak = Math.max(peak, BS.y); }
-      if (climbed < 18 || stacked.length || peak > BO.SP - BO.TH) bad.push({ bounce: { climbed, stacked: [...new Set(stacked)], peak } }); }
+      // every platform has a follower on the next level within its phase's turn, edge to edge
+      const far = [], seed0 = BO.seed; for (let sd = 1; sd <= 30; sd++) { BO.seed = sd; BO.levels = []; for (let lv = 1; lv < 45; lv++) { const T = BO.PHASES[Math.min(BO.PHASES.length - 1, boPhase(lv + 1))].turn + 1e-6;
+        for (const p of boLevel(lv)) if (!boLevel(lv + 1).some(q => boMod(q.a - p.a - BO.WID[p.w]) <= T || boMod(p.a - q.a - BO.WID[q.w]) <= T)) far.push(sd + ':' + lv); } } BO.seed = seed0; BO.levels = [];
+      if (climbed < 18 || stacked.length || far.length || peak > BO.SP - BO.TH) bad.push({ bounce: { climbed, stacked: [...new Set(stacked)], far, peak } }); }
     // every scene: the spawn is standable, and walking straight ahead for a while never leaves the floor
     for (const name in S) { const sp = S[name].spawn, r = run(name, sp.x, sp.z, sp.yaw, 20); if (r.floor === null) bad.push({ [name]: r }); }
     __dbg.setScene(S.deck); return bad;
