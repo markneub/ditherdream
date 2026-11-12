@@ -11,8 +11,8 @@
 const BO={ R0:2.4, R1:3.6, TH:0.22, SP:2.0, G:22, JUMP:Math.sqrt(2*22*3.0), BALL:0.3, WID:[1.15,0.9,0.68,0.5], pool:[], seed:1, levels:[], PHASE:10 };
 // One entry per phase (ten levels); the last repeats. n: arcs per level (at most); wid: which BO.WID widths it may use;
 // turn: the furthest (radians, edge to edge) from a platform to its follower on the next level;
-// stack: may a platform sit directly over one on the level below? (The user asked for none until about level 20.)
-BO.PHASES=[ {n:2,wid:[0,1],turn:0.5,stack:false}, {n:2,wid:[1,2],turn:0.75,stack:false}, {n:3,wid:[1,2],turn:0.95,stack:true}, {n:2,wid:[2,3],turn:1.15,stack:true}, {n:2,wid:[3],turn:1.35,stack:true} ];
+BO.PHASES=[ {n:2,wid:[0,1],turn:0.5}, {n:2,wid:[1,2],turn:0.75}, {n:2,wid:[1,2,3],turn:0.95}, {n:2,wid:[2,3],turn:1.15}, {n:2,wid:[3],turn:1.35} ];
+BO.LAND=0.06; BO.CLEAR=0.16;   // landing tolerance past a platform's end; least gap (radians) between a platform and any on the level below
 const boPhase=lv=>Math.floor((Math.max(1,lv)-1)/BO.PHASE);
 const BS={ y:0, vy:0, ang:0, spin:0, camY:0, top:0, score:0, best:0, state:'run', deadT:0, keys:new Set(), ptr:null };
 beginScene();
@@ -26,36 +26,31 @@ const BOUNCE=endScene({ name:'bounce', title:'Bounce (mock-up)', day:true, sky:0
   hint:'swipe left or right to turn the tower<br>rise through the gaps, land on the platforms' });
 BOUNCE.floorAt=()=>0;
 // The platforms of level k (k >= 1): [{a: start angle, w: index into BO.WID}]. Levels are made in order and kept, because
-// in a phase without stacking each level's arcs go in the gaps left by the level below.
+// each level is placed against the one below. Two rules (both the user's):
+// - Short turns: every platform gets a follower on the next level whose near edge is at most the phase's `turn` (radians)
+//   round from its own edge, one way or the other.
+// - Nothing directly above anything: no platform overlaps one on the level below, with room to spare (`BO.CLEAR`, more than
+//   the two landing tolerances), so a bounce never gains a level without the tower being turned.
 const BTAU=Math.PI*2, boMod=a=>((a%BTAU)+BTAU)%BTAU;
-// Every platform gets a follower on the next level whose near edge is at most the phase's `turn` (radians) round from its
-// own edge, one way or the other, so the next landing is never far to turn to. Without `stack` a follower must not sit over
-// any platform below; with it, it may, but part of every platform below is left open above (so there is a way up).
 const boOver=(a1,w1,a2,w2,m)=>boMod(a2-a1)<BO.WID[w1]+m||boMod(a1-a2)<BO.WID[w2]+m;
 function boLevel(k){ const L=BO.levels;
-  for(let lv=L.length;lv<=k;lv++){ const rnd=rng(BO.seed*7919+lv*104729), ph=BO.PHASES[Math.min(BO.PHASES.length-1,boPhase(lv))], below=L[lv-1]||[], out=[], mg=0.12;
+  for(let lv=L.length;lv<=k;lv++){ const rnd=rng(BO.seed*7919+lv*104729), ph=BO.PHASES[Math.min(BO.PHASES.length-1,boPhase(lv))], below=L[lv-1]||[], out=[], mg=BO.CLEAR;
     const pick=()=>ph.wid[Math.floor(rnd()*ph.wid.length)];
     if(lv===0){ L.push(out); continue; }
     if(!below.length){ let a=rnd()*BTAU; for(let i=0;i<ph.n;i++){ out.push({a,w:pick()}); a+=BTAU/ph.n*(0.85+0.3*rnd()); } L.push(out); continue; }
     const near=p=>out.some(q=>boMod(q.a-p.a-BO.WID[p.w])<=ph.turn||boMod(p.a-q.a-BO.WID[q.w])<=ph.turn);
-    const open=()=>below.every(p=>{ for(let t=0.05;t<BO.WID[p.w];t+=0.05) if(!out.some(q=>boMod(p.a+t-q.a)<BO.WID[q.w]+0.12||boMod(q.a-p.a-t)<0.12)) return true; return false; });
-    for(let attempt=0;attempt<30;attempt++){ out.length=0;                         // the whole level again until every platform below has one
-    for(const p of [...below].sort(()=>rnd()-0.5)){ if(near(p)) continue;
-      for(let tries=0;tries<80;tries++){ const w=tries<40?pick():ph.wid[ph.wid.length-1], d=mg+rnd()*(ph.turn-mg), after=rnd()<0.5;   // later tries use the narrowest width
-        const q={a:after?p.a+BO.WID[p.w]+d:p.a-d-BO.WID[w],w};
-        if(out.some(o=>boOver(o.a,o.w,q.a,q.w,tries<40?0.25:0.1))) continue;
-        if(!ph.stack&&below.some(o=>boOver(o.a,o.w,q.a,q.w,mg))) continue;
-        if(boOver(p.a,p.w,q.a,q.w,mg)) continue;
-        out.push(q); if(ph.stack&&!open()){ out.pop(); continue; } break; } }
-    if(below.every(near)) break; }
-    // anything that is not someone's follower can go anywhere it fits (a few extra, decoy platforms when stacking)
-    for(let i=out.length;i<ph.n;i++) for(let tries=0;tries<12;tries++){ const q={a:rnd()*BTAU,w:pick()};
-      if(out.some(o=>boOver(o.a,o.w,q.a,q.w,0.25))||(!ph.stack&&below.some(o=>boOver(o.a,o.w,q.a,q.w,mg)))) continue;
-      out.push(q); if(ph.stack&&!open()){ out.pop(); continue; } break; }
+    const fits=(q,m)=>!out.some(o=>boOver(o.a,o.w,q.a,q.w,m))&&!below.some(o=>boOver(o.a,o.w,q.a,q.w,mg));
+    for(let attempt=0;attempt<40;attempt++){ out.length=0;                         // the whole level again until every platform below has one
+      for(const p of [...below].sort(()=>rnd()-0.5)){ if(near(p)) continue;
+        for(let tries=0;tries<80;tries++){ const w=tries<40?pick():ph.wid[ph.wid.length-1], d=mg+rnd()*(ph.turn-mg), after=rnd()<0.5;   // later tries use the narrowest width
+          const q={a:after?p.a+BO.WID[p.w]+d:p.a-d-BO.WID[w],w};
+          if(fits(q,tries<40?0.25:0.1)){ out.push(q); break; } } }
+      if(below.every(near)) break; }
+    for(let i=out.length;i<ph.n;i++) for(let tries=0;tries<12;tries++){ const q={a:rnd()*BTAU,w:pick()}; if(fits(q,0.25)){ out.push(q); break; } }   // extras, anywhere they fit
     L.push(out); }
   return L[k]; }
 // Is a platform under (or over) the ball? The ball sits at the front (world angle pi/2 in sector()'s x-to-z convention).
-function boUnder(p,m=0.06){ const t=boMod(Math.PI/2+BS.ang+p.a); return t<=BO.WID[p.w]+m||t>=BTAU-m; }
+function boUnder(p,m=BO.LAND){ const t=boMod(Math.PI/2+BS.ang+p.a); return t<=BO.WID[p.w]+m||t>=BTAU-m; }
 function boReset(){ Object.assign(BS,{y:BO.BALL,vy:BO.JUMP,ang:0,spin:0,camY:0,top:0,score:0,state:'run'}); BO.seed=(Date.now()&0xffff)+1; BO.levels=[];
   const p1=boLevel(1)[0]; BS.ang=BO.WID[p1.w]+0.3-Math.PI/2-p1.a;                    // start under a gap in level 1, just past a platform's end
   boHud(); }
@@ -73,7 +68,9 @@ BOUNCE.update=(T,dt)=>{
       for(let lv=k0;lv>k1&&lv>=0;lv--) if(lv===0||boLevel(lv).some(p=>boUnder(p))){ BS.y=lv*BO.SP+BO.BALL; BS.vy=BO.JUMP; BS.top=lv;
         if(lv>BS.score){ BS.score=lv; boHud(); } break; } }
     BS.camY+=(Math.max(BS.camY,BS.top*BO.SP)-BS.camY)*Math.min(1,dt*3);            // the view only ever moves up
-    if(BS.y<BS.camY-7.5){ BS.state='dead'; BS.deadT=performance.now(); BS.best=Math.max(BS.best,BS.score); boHud(); } }
+    // the run ends when the ball drops out of the bottom of the view, so it never bounces off something you can't see
+    const c=BOUNCE.camera(), pitch=Math.atan2(c.eye[1]-c.look[1],c.eye[2]-c.look[2]), bottom=c.eye[1]-(c.eye[2]-(BO.R0+BO.R1)/2)*Math.tan(pitch+c.fov*Math.PI/360);
+    if(BS.y+BO.BALL<bottom){ BS.state='dead'; BS.deadT=performance.now(); BS.best=Math.max(BS.best,BS.score); boHud(); } }
   // put pooled platforms on the levels in view, turned with the tower
   const used=BO.WID.map(()=>0), kc=Math.round(BS.camY/BO.SP);
   for(let lv=Math.max(1,kc-4);lv<=kc+8;lv++) for(const p of boLevel(lv)){ const o=BO.pool[p.w][used[p.w]++]; if(!o) continue; o.pos=[0,lv*BO.SP-BO.TH/2,0]; o.rot=[0,BS.ang+p.a,0]; o.ghost=BS.y-BO.BALL<lv*BO.SP-1e-3; }

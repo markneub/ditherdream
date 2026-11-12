@@ -108,11 +108,12 @@ if (!only || only === 'tests') {
       const good = play(true), idle = play(false);
       if (good.score < 10 || idle.state !== 'dead') bad.push({ rush: { good, idle } }); }
     // bounce: a bot that turns the tower so a platform of the level below the falling ball is under it climbs 18 levels
-    // (nothing is stacked in the first two phases); and a ball rising under a platform passes through it
+    // ; and a ball rising under a platform passes through it
     { __dbg.setScene(S.bounce); for (let i = 0; i < 60 * 60 && BS.state === 'run' && BS.score < 18; i++) {
         if (BS.vy < 0) { const lv = Math.floor((BS.y - BO.BALL) / BO.SP + 1e-6); if (lv > 0) { const p = boLevel(lv)[0]; BS.ang = BO.WID[p.w] / 2 - Math.PI / 2 - p.a; } }
         S.bounce.update(0, 1 / 60); }
-      const climbed = BS.score, stacked = []; for (let lv = 2; lv <= 20; lv++) for (const p of boLevel(lv)) for (const q of boLevel(lv - 1)) for (let t = 0; t <= BO.WID[p.w]; t += 0.05) { const d = boMod(p.a + t - q.a); if (d < BO.WID[q.w]) stacked.push(lv); }
+      // no platform is within BO.CLEAR of one on the level below, at any level (no free levels without turning)
+      const climbed = BS.score, stacked = [], seedS = BO.seed; for (let sd = 1; sd <= 30; sd++) { BO.seed = sd; BO.levels = []; for (let lv = 2; lv <= 60; lv++) for (const p of boLevel(lv)) for (const q of boLevel(lv - 1)) if (boOver(p.a, p.w, q.a, q.w, BO.CLEAR - 1e-6)) stacked.push(sd + ':' + lv); } BO.seed = seedS; BO.levels = [];
       // a ball rising under a platform goes through it (the bounce from level 0 reaches its apex, 3 m)
       __dbg.setScene(S.bounce); const p1 = boLevel(1)[0]; BS.ang = BO.WID[p1.w] / 2 - Math.PI / 2 - p1.a; let peak = 0; for (let i = 0; i < 90; i++) { S.bounce.update(0, 1 / 60); peak = Math.max(peak, BS.y); }
       // every platform has a follower on the next level within its phase's turn, edge to edge
