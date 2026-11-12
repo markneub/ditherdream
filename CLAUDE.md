@@ -243,11 +243,19 @@ The user's own game design, in their words: a ball that bounces continually upwa
 are segments of the circumference of an invisible cylinder; the camera looks at the cylinder from the side; the only
 control is swiping left or right to rotate the cylinder so a platform is under the ball; landing bounces the ball "higher
 than it should", so it keeps climbing. They want **dither art with different colour effects as you go higher**, and asked
-for a **line-art mock-up first** to check the vision was understood. That mock-up is what exists; wait for their feedback
-on the game before adding the dither/colour stages.
+for a **line-art mock-up first** to check the vision was understood. Once the rules were agreed, the dither look went in
+(below); colour stages per phase are still to come.
 
-- **Line art in this renderer:** everything is emissive (white, unlit) on a `day` white sky, so only the outlines show; the
-  ball is shade 0 (solid black). `sunDir` points down so the sky's sun ring is never in view.
+- **Look:** white platforms (`BO.SHADE`) lit by a high sun (`sky` 3.2 ambient, `sunI` 1.25) on a `day` white sky: tops go
+  white, sides dot, the ball is dark (0.16) and casts a sun shadow. The sun's shadow box follows the view (`update` rebuilds
+  `sunVP`). Ghosts are pale (`uGhost` lifts their tone 70% to white) as well as dashed.
+- **Depth effects** (user's request: platforms lighten and blur as they get farther away), both general scene props set
+  each frame: `sc.fade = [start, end, amount]` mixes tone to white with distance (`uFade` in `SCENE_FS`), and
+  `sc.dof = [focus distance, strength]` (`uDof` in `POST_FS`) makes any non-sky pixel behind the focus read the picture
+  from a fixed per-pixel random offset up to its circle of confusion (max 3 px): a grainy 1-bit blur that holds still.
+  Focus is 1.5 m behind the ball, so the front of the tower stays sharp and its back breaks up.
+- **Dust:** `boDust` throws up to 14 small dark specks (pooled boxes) out and up from where the ball lands; they settle on
+  the platform top and vanish in about half a second.
 - **Rules, as agreed after the first mock-up:** the ball stays at the front of the tower and moves only vertically.
   **Ghost platforms:** a platform is a ghost while it is above the ball (dashed outline; the ball rises straight through
   it) and turns solid once the ball's underside is above its top, so it can be landed on. History: the first mock-up let
@@ -260,8 +268,8 @@ on the game before adding the dither/colour stages.
   ends the run. Score is the highest level landed on. The user confirmed the **fixed bounce** is what they meant by
   "bounces higher than it should" (not one that grows with each landing).
 - **Phases:** ten levels each (`BO.PHASE`), described by `BO.PHASES` (arcs per level, allowed widths, `stack`); the last
-  entry repeats. The user wants phases to be where **new kinds of object and the colour/dither effects** come in. A thin
-  hoop marks the first level of each new phase and the HUD shows the phase number.
+  entry repeats. The user wants phases to be where **new kinds of object and the colour/dither effects** come in. The HUD
+  shows the phase number (the hoops that marked each phase were removed at the user's request).
 - **Short turns** (the user found low levels needed too much turning): every platform gets a *follower* on the next level
   whose near edge is at most the phase's `turn` (radians, edge to edge) round from its own edge, either way. Phase 1 is
   0.5 rad, rising to 1.35 by phase 5. Widths `BO.WID` were also narrowed at their request (1.15 down to 0.5 rad).
