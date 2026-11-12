@@ -1,5 +1,5 @@
 // ---------- scenes ----------
-const SCENES = [DECK, ANCHOR, OFFICE, RUSH, HOLD, LIGHTHOUSE, FOREST, CATHEDRAL, TRAIN, RUINS];
+const SCENES = [DECK, ANCHOR, OFFICE, RUSH, BOUNCE, HOLD, LIGHTHOUSE, FOREST, CATHEDRAL, TRAIN, RUINS];
 const hint=document.getElementById('hint'), modeBtn=document.getElementById('mode'), fade=document.getElementById('fade');
 const scenesBtn=document.getElementById('scenes'), sceneList=document.getElementById('scene-list');
 const coarse=matchMedia('(pointer: coarse)').matches;
@@ -78,11 +78,12 @@ function frame(now){
     if(l.obj) l.obj.pos=l.pos;
     const ph=l.phase||0; l.now=l.intensity*(1+(l.flicker??0.07)*Math.sin(T*7.3+ph)*Math.sin(T*3.1+ph*2)); }
   // a wider lens on foot, wider still on a tall screen
-  const FOV=(walking||game ? (W<H?82:66) : 60)*Math.PI/180;
+  const gcam=game?sc.camera():null;
+  const FOV=(gcam&&gcam.fov ? gcam.fov : walking||game ? (W<H?82:66) : 60)*Math.PI/180;
 
   let eye, look;
   let camUp=[0,1,0];
-  if(game){ const c=sc.camera(); eye=c.eye; look=c.look; camUp=c.up||camUp; }
+  if(game){ const c=gcam; eye=c.eye; look=c.look; camUp=c.up||camUp; }
   else if(walking){ eye=player.eye(); const d=player.dir(); look=[eye[0]+d[0],eye[1]+d[1],eye[2]+d[2]]; }
   else { eye=[target[0]+radius*Math.sin(phi)*Math.cos(theta), target[1]+radius*Math.cos(phi), target[2]+radius*Math.sin(phi)*Math.sin(theta)]; look=target; }
   const V=M4.lookAt(eye,look,camUp);

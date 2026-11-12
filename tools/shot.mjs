@@ -33,7 +33,7 @@ const WALKS = [
   ['anchor-deck', 'anchor', -4.6, 0.9, -1.571, 0], ['anchor-aft', 'anchor', 3.0, -1.3, 1.571, 0.1], ['anchor-up', 'anchor', -3.6, -1.1, -1.2, 0.75], ['anchor-quarterdeck', 'anchor', -7.2, 0.9, -1.75, -0.2, 3.1],
   ['office-reception', 'office', -17.6, 12.6, -1.571, 0], ['office-hall', 'office', -8.5, 12.5, -1.4, 0], ['office-clock', 'office', -13, 12.9, 3.1416, 0.22], ['office-door', 'office', -15, 10, 3.1416, 0], ['office-farm', 'office', -18.5, 0.5, -1.571, 0], ['office-cubicle', 'office', -14.2, -6.3, 2.72, -0.3],
   ['office-corridor', 'office', 1.5, -8.5, -1.571, 0], ['office-lone', 'office', 12.6, 12.7, -1.2, -0.25], ['office-meeting', 'office', -10.2, -8.2, 1.1, -0.1], ['office-office', 'office', 10.5, 0.6, -1.571, -0.05],
-  ['rush-run', 'rush', 0, 0, 0, 0],
+  ['rush-run', 'rush', 0, 0, 0, 0], ['bounce-start', 'bounce', 0, 0, 0, 0],
   ['hold-arrive', 'hold', 4.0, -1.0, 1.271, 0], ['hold-hammocks', 'hold', -2, 1.6, 2.2, 0.05], ['hold-ladder', 'hold', 2.2, -2.4, -1.95, 0.3],
   ['lighthouse-door', 'lighthouse', 9.5, 0, 1.571, 0.25], ['lighthouse-stairs', 'lighthouse', 1.3, -0.9, 1.9, 0.35, 0], ['lighthouse-lamp', 'lighthouse', 1.2, -1.0, 1.0, 0.1, 16], ['lighthouse-gallery', 'lighthouse', 1.9, -2.35, -2.2, -0.2, 16],
   ['forest-path', 'forest', 24, 0, 1.571, 0], ['forest-fire', 'forest', 4.5, -1.5, 1.2, 0], ['forest-deep', 'forest', -14, -12, -2.2, 0.15],
@@ -105,6 +105,11 @@ if (!only || only === 'tests') {
         sc.update(0, 1 / 60); } return { score: R.score, state: R.state }; };
       const good = play(true), idle = play(false);
       if (good.score < 10 || idle.state !== 'dead') bad.push({ rush: { good, idle } }); }
+    // bounce: a bot that turns the tower so a platform of the level below the falling ball is under it climbs 12 levels
+    { __dbg.setScene(S.bounce); for (let i = 0; i < 60 * 60 && BS.state === 'run' && BS.score < 12; i++) {
+        if (BS.vy < 0) { const lv = Math.floor((BS.y - BO.BALL) / BO.SP + 1e-6); if (lv > 0) { const p = boLevel(lv)[0]; BS.ang = BO.WID[p.w] / 2 - Math.PI / 2 - p.a; } }
+        S.bounce.update(0, 1 / 60); }
+      if (BS.score < 12) bad.push({ bounce: { score: BS.score, state: BS.state } }); }
     // every scene: the spawn is standable, and walking straight ahead for a while never leaves the floor
     for (const name in S) { const sp = S[name].spawn, r = run(name, sp.x, sp.z, sp.yaw, 20); if (r.floor === null) bad.push({ [name]: r }); }
     __dbg.setScene(S.deck); return bad;
