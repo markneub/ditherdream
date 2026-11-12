@@ -1,7 +1,7 @@
 # ditherdream
 
-A 1-bit, Obra Dinn-inspired renderer experiment in plain WebGL2: ten small scenes (a ship's deck and
-hold, a real ship model at anchor, an empty office, a tunnel-flying game, a lighthouse, a forest, a cathedral, a night train, desert ruins), dithered with dots that stick to surfaces. No build step, no runtime dependencies.
+A 1-bit, Obra Dinn-inspired renderer experiment in plain WebGL2: eleven small scenes (a ship's deck and
+hold, a real ship model at anchor, an empty office, a tunnel-flying game, a bouncing-ball game, a lighthouse, a forest, a cathedral, a night train, desert ruins), dithered with dots that stick to surfaces. No build step, no runtime dependencies.
 Seven scenes are boxes and cylinders generated in code; `anchor` is a Poly Haven model and `office` is code-built rooms
 with Poly Haven furniture, both loaded from `assets/`.
 
@@ -17,7 +17,7 @@ with Poly Haven furniture, both loaded from `assets/`.
 - `window.__dbg`: `S` (dev switches), `scenes` (by name), `setScene(sc)`, `setView('orbit'|'walk')`,
   `cam(theta, phi, radius)`, `player`, `walk(x, z, yaw, pitch, sceneName, y)`.
 - Walk tests (simulated, `player.update(1/60)` in a loop): the deck's steps/rails/edges, hatch down and
-  ladder up, the anchored ship's two ladders and bulwark, every office room reachable from the spawn (flood fill), tunnel run (a scripted player clears ten gates; no input crashes), the lighthouse door → spiral stair → lamp room → gallery, and every scene's spawn + 20 s straight ahead.
+  ladder up, the anchored ship's two ladders and bulwark, every office room reachable from the spawn (flood fill), tunnel run (a scripted player clears ten gates; no input crashes), bounce (a scripted player climbs twelve levels), the lighthouse door → spiral stair → lamp room → gallery, and every scene's spawn + 20 s straight ahead.
 
 ## Deploy
 
@@ -42,6 +42,7 @@ Files load in this order and share the global scope (top-level `const`s are visi
 | `src/gltf.js` | `loadGLTF(url)`: meshes with node transforms applied, and each one's base-colour image URL |
 | `src/anchor.js` | The model scene: loads the ship on first open, builds its height map, ladders |
 | `src/rush.js` | Tunnel run: the game's state `R`, gate pool, its own camera and input, HUD |
+| `src/bounce.js` | Bounce: the ball-and-tower game (`BO` constants, `BS` state, `boLevel`), its camera and input |
 | `src/office.js` | The office: floor plan helpers (`oWall`, `oPart`, `oLights`), furniture placement, the roaming lamps |
 | `src/hold.js` `lighthouse.js` `forest.js` `cathedral.js` `train.js` `ruins.js` | One scene each: geometry, lamps, `update(T)`, `floorAt`, `spawn` |
 | `src/walk.js` | First-person `player`, the deck's and hold's floors and the hatch/ladder between them, `scene` (the current one), touch and desktop controls |
@@ -89,6 +90,7 @@ in it with a Walk/Orbit button; the rest are walked.
 | `anchor` | a real model, to compare with `deck` | see "The model scene" below |
 | `office` | flicker, darkness, many copies of models | see "The office" below |
 | `rush` | the dots at speed; a game | see "Tunnel run" below |
+| `bounce` | the user's own game design, as line art for now | see "Bounce" below |
 | `hold` | lantern light, hard swinging shadows | moonlight only through the hatch grating; the ladder leads up |
 | `lighthouse` | a moving light, a climb | spot lamp turning in the lamp room (lights the sea via the sea shader); 3.5-turn spiral stair: `floorAt` returns the highest floor within a step's reach of your height (several floors overlap); gallery door is opposite the stair well |
 | `forest` | many thin overlapping shapes | 85 conifers (seeded), campfire lamp with jitter + flicker, dappled moonlight |
@@ -227,13 +229,32 @@ is solid, tap to invert the picture" fun? Not yet played by anyone; speeds, gate
 - **Rule:** each gate is four quarter panels, light (emissive), dark (shade 0.02) or missing. You pass through what is white
   on screen. A tap sets `RUSH.invert`, which swaps the post pass's two palette colours (any scene can set `sc.invert`), so
   the dark panels become the white ones. Patterns (`RPATS`) come in either polarity and get harder with the score.
-- **Scene hooks added for it** (usable by any scene): `sc.camera()` returns `{eye, look, up}` and makes the scene a game
+- **Scene hooks added for it** (usable by any scene): `sc.camera()` returns `{eye, look, up, fov}` and makes the scene a game
   (`view = 'game'`: no walking, no orbit, walk.js's touch handlers stay out of it); `sc.enter()` / `sc.leave()` run from
   `setScene`; `sc.hint` replaces the controls hint.
 - **Endless tunnel:** 43 identical 4 m segments, each its own object so the dots and outlines repeat exactly; the camera's z
   wraps every 4 m. Gates are eight pooled sets of panels placed relative to the camera, parked at y -100 when unused.
 - **Controls:** touch drag steers (relative), a quick tap inverts; mouse position steers and a click inverts; arrows/WASD + space.
 - One lamp travels with the camera (plus `fill`, since light along a tunnel hits the walls at a grazing angle).
+
+## Bounce (`bounce`)
+
+The user's own game design, in their words: a ball that bounces continually upward by landing on platforms; the platforms
+are segments of the circumference of an invisible cylinder; the camera looks at the cylinder from the side; the only
+control is swiping left or right to rotate the cylinder so a platform is under the ball; landing bounces the ball "higher
+than it should", so it keeps climbing. They want **dither art with different colour effects as you go higher**, and asked
+for a **line-art mock-up first** to check the vision was understood. That mock-up is what exists; wait for their feedback
+on the game before adding the dither/colour stages.
+
+- **Line art in this renderer:** everything is emissive (white, unlit) on a `day` white sky, so only the outlines show; the
+  ball is shade 0 (solid black). `sunDir` points down so the sky's sun ring is never in view.
+- **Rules as built (my reading, to confirm):** the ball stays at the front of the tower and moves only vertically. Platforms
+  are one-way (it rises through them). Any landing sets the upward speed to `BO.JUMP` (apex 2.9 m) whatever the fall;
+  levels are `BO.SP` = 1.6 m apart, so each bounce can gain at most one level. `boLevel(k)` gives level k's arcs from a
+  seed: three wide ones low down, down to one or two narrow ones higher. Level 0 is a full ring. The view only moves up;
+  falling 7.5 m below it ends the run. Score is the highest level landed on.
+- Platforms are pooled dyn objects per arc width (`sector()` geometry), placed on the levels in view each frame.
+- Drag turns the tower (with a short glide on release); arrows / A D on desktop.
 
 ## Ideas not yet tried
 
