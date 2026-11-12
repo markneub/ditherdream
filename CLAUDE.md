@@ -17,7 +17,7 @@ with Poly Haven furniture, both loaded from `assets/`.
 - `window.__dbg`: `S` (dev switches), `scenes` (by name), `setScene(sc)`, `setView('orbit'|'walk')`,
   `cam(theta, phi, radius)`, `player`, `walk(x, z, yaw, pitch, sceneName, y)`.
 - Walk tests (simulated, `player.update(1/60)` in a loop): the deck's steps/rails/edges, hatch down and
-  ladder up, the anchored ship's two ladders and bulwark, every office room reachable from the spawn (flood fill), tunnel run (a scripted player clears ten gates; no input crashes), bounce (a scripted player climbs eighteen levels, nothing is stacked below level 20, every platform has a follower within its phase's turn over 30 seeds, a ball rising under a platform passes through it, and every landing has a drawn platform under the ball), the lighthouse door → spiral stair → lamp room → gallery, and every scene's spawn + 20 s straight ahead.
+  ladder up, the anchored ship's two ladders and bulwark, every office room reachable from the spawn (flood fill), tunnel run (a scripted player clears ten gates; no input crashes), bounce (a scripted player climbs eighteen levels, no platform is within reach above another at any level, every platform has a follower within its phase's turn over 30 seeds, a ball rising under a platform passes through it, and every landing has a drawn platform under the ball), the lighthouse door → spiral stair → lamp room → gallery, and every scene's spawn + 20 s straight ahead.
 
 ## Deploy
 
@@ -256,8 +256,8 @@ on the game before adding the dither/colour stages.
   How it's drawn: a dyn object with `o.ghost` sets `uGhost`, which puts its id in the top range (65280 up); the post pass
   dashes any outline touching a ghost pixel (excluded from the model outline rules). Any landing sets the upward
   speed to `BO.JUMP` (apex 3 m) whatever the fall; levels are `BO.SP` = 2 m apart, so each bounce can gain one level and
-  the ball's top stops short of the level after that. Level 0 is a full ring. The view only moves up; falling 7.5 m below
-  it ends the run. Score is the highest level landed on. The user confirmed the **fixed bounce** is what they meant by
+  the ball's top stops short of the level after that. Level 0 is a full ring. The view only moves up; dropping out of the bottom of the view
+  ends the run. Score is the highest level landed on. The user confirmed the **fixed bounce** is what they meant by
   "bounces higher than it should" (not one that grows with each landing).
 - **Phases:** ten levels each (`BO.PHASE`), described by `BO.PHASES` (arcs per level, allowed widths, `stack`); the last
   entry repeats. The user wants phases to be where **new kinds of object and the colour/dither effects** come in. A thin
@@ -265,9 +265,13 @@ on the game before adding the dither/colour stages.
 - **Short turns** (the user found low levels needed too much turning): every platform gets a *follower* on the next level
   whose near edge is at most the phase's `turn` (radians, edge to edge) round from its own edge, either way. Phase 1 is
   0.5 rad, rising to 1.35 by phase 5. Widths `BO.WID` were also narrowed at their request (1.15 down to 0.5 rad).
-- **No platform directly over another until level 20** (the user's rule): phases with `stack:false` reject followers over
-  any platform below. `boLevel` builds levels in order and caches them (`BO.levels`), retrying a level until every platform
-  below has a follower. From level 21 followers may overlap, but some part of every platform below stays open above.
+- **Nothing directly above anything, at any level** (the user's rule, after "free levels without even rotating"): no
+  platform comes within `BO.CLEAR` (0.16 rad, more than the two 0.06 landing tolerances `BO.LAND`) of one on the level
+  below. `boLevel` builds levels in order and caches them (`BO.levels`), retrying a level until every platform below has a
+  follower. This is crowded with three platforms a level, so every phase has two; phases differ in widths and turn limits.
+- **Losing:** the run ends as soon as the ball drops out of the bottom of the view (computed from the camera each frame).
+  It used to end 7.5 m below the view's reference height, which is below the screen edge: the ball could land on a platform
+  (or the floor ring) out of sight and bounce back up into view on "thin air", which the user saw.
 - Platforms are pooled dyn objects per arc width (`sector()` geometry), placed on the levels in view each frame.
 - Drag turns the tower (with a short glide on release); arrows / A D on desktop.
 
