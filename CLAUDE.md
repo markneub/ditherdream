@@ -253,8 +253,8 @@ on the game before adding the dither/colour stages.
   the ball back down, so you turn a gap over the ball to go up and a platform under it to land. Any landing sets the upward
   speed to `BO.JUMP` (apex 3 m) whatever the fall; levels are `BO.SP` = 2 m apart, so each bounce can gain one level and
   the ball's top stops short of the level after that. Level 0 is a full ring. The view only moves up; falling 7.5 m below
-  it ends the run. Score is the highest level landed on. Still to confirm: whether "bounces higher than it should" means
-  this fixed bounce or one that grows.
+  it ends the run. Score is the highest level landed on. The user confirmed the **fixed bounce** is what they meant by
+  "bounces higher than it should" (not one that grows with each landing).
 - **Phases:** ten levels each (`BO.PHASE`), described by `BO.PHASES` (arcs per level, allowed widths, `stack`); the last
   entry repeats. The user wants phases to be where **new kinds of object and the colour/dither effects** come in. A thin
   hoop marks the first level of each new phase and the HUD shows the phase number.
